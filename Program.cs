@@ -24,14 +24,15 @@ namespace RytheTributary
         {
             cw.CurrentWriter.Dispose();
             cw = new CodeWriter(cw_options);
+            cw.WriteLine("#pragma once");
             cw.WriteLine("#include <core/types/reflector.hpp>");
             string headerPath = cppClass.SourceFile.ToLower().Replace(parent.ToLower(), "");
             cw.WriteLine(string.Format("#include \"../{0}\"", headerPath));
             cw.WriteLine(string.Format("struct {0};", cppClass.Name));
             cw.WriteLine("namespace legion::core");
             cw.OpenBraceBlock();
-            cw.WriteLine(string.Format("L_NODISCARD reflector make_reflector({0}& obj);", cppClass.Name));
-            cw.WriteLine(string.Format("L_NODISCARD reflector make_reflector(const {0}& obj);", cppClass.Name));
+            cw.WriteLine(string.Format("L_NODISCARD auto make_reflector({0}& obj);", cppClass.Name));
+            cw.WriteLine(string.Format("L_NODISCARD const auto make_reflector(const {0}& obj);", cppClass.Name));
             cw.CloseBraceBlock();
             var output = cw.ToString();
             return output;
@@ -40,6 +41,7 @@ namespace RytheTributary
         {
             cw.CurrentWriter.Dispose();
             cw = new CodeWriter(cw_options);
+            cw.WriteLine("#pragma once");
             cw.WriteLine("#include <core/types/prototype.hpp>");
             string headerPath = cppClass.SourceFile.ToLower().Replace(parent.ToLower(), "");
             cw.WriteLine(string.Format("#include \"../{0}\"", headerPath));
@@ -57,6 +59,7 @@ namespace RytheTributary
         {
             cw.CurrentWriter.Dispose();
             cw = new CodeWriter(cw_options);
+            cw.WriteLine("#pragma once");
             cw.WriteLine(string.Format("#include \"autogen_reflector_{0}.hpp\"", cppClass.Name));
             cw.WriteLine("namespace legion::core");
             cw.OpenBraceBlock();
@@ -70,6 +73,7 @@ namespace RytheTributary
         {
             cw.CurrentWriter.Dispose();
             cw = new CodeWriter(cw_options);
+            cw.WriteLine("#pragma once");
             cw.WriteLine(string.Format("#include \"autogen_prototype_{0}.hpp\"", cppClass.Name));
             cw.WriteLine("namespace legion::core");
             cw.OpenBraceBlock();
@@ -85,9 +89,9 @@ namespace RytheTributary
             primitveIndecies.Clear();
             objectIndecies.Clear();
             if (isConst)
-                cw.WriteLine(string.Format("L_NODISCARD reflector make_reflector(const {0}& obj)", cppClass.Name));
+                cw.WriteLine(string.Format("L_NODISCARD const auto make_reflector(const {0}& obj)", cppClass.Name));
             else
-                cw.WriteLine(string.Format("L_NODISCARD reflector make_reflector({0}& obj)", cppClass.Name));
+                cw.WriteLine(string.Format("L_NODISCARD auto make_reflector({0}& obj)", cppClass.Name));
             cw.OpenBraceBlock();
             if (isConst)
                 cw.WriteLine("ptr_type address = reinterpret_cast<ptr_type>(std::addressof(obj));");
@@ -136,14 +140,11 @@ namespace RytheTributary
             cw.WriteLine("return refl;");
             cw.CloseBraceBlock();
         }
-        static void generate_prototype_code(CppClass cppClass, bool isConst = false)
+        static void generate_prototype_code(CppClass cppClass)
         {
             primitveIndecies.Clear();
             objectIndecies.Clear();
-            if (isConst)
-                cw.WriteLine(string.Format("L_NODISCARD prototype make_prototype(const {0}& obj)", cppClass.Name));
-            else
-                cw.WriteLine(string.Format("L_NODISCARD prototype make_prototype({0}& obj)", cppClass.Name));
+            cw.WriteLine(string.Format("L_NODISCARD prototype make_prototype(const {0}& obj)", cppClass.Name));
             cw.OpenBraceBlock();
             cw.WriteLine("prototype prot;");
             cw.WriteLine(string.Format("prot.typeId = typeHash<{0}>();", cppClass.Name));
@@ -188,37 +189,42 @@ namespace RytheTributary
 
         static void Main(string[] args)
         {
-            projectDirectory = @"D:\Repos\Args-Engine\";
             options = options.ConfigureForWindowsMsvc(CppTargetCpu.X86_64, CppVisualStudioVersion.VS2019);
             options.AdditionalArguments.Add("-std=c++17");
             options.AdditionalArguments.Add("-Werror=return-type");
+            options.IncludeFolders.Add(string.Format(@"{0}deps\include", projectDirectory));
             options.IncludeFolders.Add(string.Format(@"{0}legion\engine", projectDirectory));
-            options.IncludeFolders.Add(string.Format(@"{0}legion\engine\core", projectDirectory));
-            //options.IncludeFolders.Add(string.Format(@"{0}deps/include", projectDirectory));
             options.ParseAttributes = true;
             if (args.Length == 0 || args[0] == "-help" || args[0] == "-h")
             {
                 Console.WriteLine(
                     "\t---rythe_preprocessor---\n" +
                     "\tA tool for automatically generating code for additional functionality.\n\n" +
-                    "\tpropper usage: any argument is assumed to be a path to check except those starting with \"-ex=\",\n" +
-                    "\t    arguments starting with \"-ex=\" are taken as exclusion patterns.\n" +
-                    "\teg:\n" +
-                    "\t    lgn_cleanup \"../legion\" -ex=\"**/glm/\" -ex=\"**/folder/*/file.hpp\""
+                    "\targuments:" +
+                    "\t     -ex= : arguments starting with \"-ex=\" are taken as exclusion patterns.\n" +
+                    "\t     -app= : arguments starting with \"-app=\" are the directory(s)of your application(s)" +
+                    "\t     -module= : arguments starting with \"-module=\" are the directory(s) of your module(s)"
                     );
                 return;
             }
 
             Regex excludeRegex = new Regex("-ex=(.*)");
+            Regex applicationRegex = new Regex("-app=(.*)");
+            Regex moduleRegex = new Regex("-module=(.*)");
             Regex starReplace = new Regex("([^\\.*]*)\\*([^\\*]*)");
 
-            List<string> searchPaths = new List<string>();
+            List<string> applicationPaths = new List<string>();
+            List<string> modulePaths = new List<string>();
             List<Regex> excludePatterns = new List<Regex>();
+            if (args[0].StartsWith("-root="))
+            {
+                projectDirectory = args[0].Replace("-root=", "");
+            }
 
             foreach (string command in args)
             {
-                Match match = excludeRegex.Match(command);
-                if (match.Success)
+                Match match;
+                if ((match = excludeRegex.Match(command)).Success)
                 {
                     string excludePattern = match.Groups[1].Value;
                     excludePattern = excludePattern.Replace("\"", "");
@@ -229,15 +235,26 @@ namespace RytheTributary
 
                     excludePatterns.Add(new Regex(excludePattern));
                 }
-                else
+                else if (applicationRegex.Match(command).Success)
                 {
-                    searchPaths.Add(command);
+                    var cmd = command.Replace("-app=", "");
+                    applicationPaths.Add(projectDirectory + @"applications\" + cmd + @"\");
+                }
+                else if (moduleRegex.Match(command).Success)
+                {
+                    var cmd = command.Replace("-module=", "");
+                    modulePaths.Add(projectDirectory + @"legion\engine\" + cmd + @"\");
                 }
             }
 
-            foreach (string searchPath in searchPaths)
+            foreach (string path in applicationPaths)
             {
-                ProcessDir(searchPath, excludePatterns);
+                ProcessDir(path, excludePatterns);
+            }
+
+            foreach(string path in modulePaths)
+            {
+                ProcessDir(path, excludePatterns);
             }
 
             Console.WriteLine($"Checked {filesChecked} files and added {filesCreated} files in total.");
@@ -245,7 +262,7 @@ namespace RytheTributary
 
         static void ProcessDir(string path, List<Regex> excludePatterns)
         {
-            string[] fileTypes = { "*.c", "*.h", "*.hpp", "*.cpp" };
+            string[] fileTypes = { "*.h", "*.hpp" };
             paths.Clear();
 
             foreach (string type in fileTypes)
@@ -273,9 +290,10 @@ namespace RytheTributary
             Console.WriteLine("");
         }
 
-        static void ProcessFile(CppCompilation compilation, string parent)
+        static void ProcessFile(CppCompilation compilation, string modulePath, string applicationPath)
         {
-            Directory.CreateDirectory(string.Format(@"{0}\autogen", parent));
+            Directory.CreateDirectory(string.Format(@"{0}\autogen", applicationPath));
+            options.IncludeFolders.Add(modulePath);
 
             foreach (var diagnostic in compilation.Diagnostics.Messages)
             {
@@ -293,23 +311,23 @@ namespace RytheTributary
                     if (attr.Name.Equals("reflectable"))
                     {
                         Console.WriteLine(cppClass.Name);
-                        string hppData = generate_prototype_hpp(parent, cppClass);
-                        string path = string.Format(@"{0}\autogen\autogen_prototype_{1}.hpp", parent, cppClass.Name);
+                        string hppData = generate_prototype_hpp(applicationPath, cppClass);
+                        string path = string.Format(@"{0}\autogen\autogen_prototype_{1}.hpp", applicationPath, cppClass.Name);
                         filesCreated++;
                         File.WriteAllText(path, hppData);
 
                         string cppData = generate_prototype_cpp(cppClass);
-                        path = string.Format(@"{0}\autogen\autogen_prototype_{1}.cpp", parent, cppClass.Name);
+                        path = string.Format(@"{0}\autogen\autogen_prototype_{1}.cpp", applicationPath, cppClass.Name);
                         filesCreated++;
                         File.WriteAllText(path, cppData);
 
-                        hppData = generate_reflector_hpp(parent, cppClass);
-                        path = string.Format(@"{0}\autogen\autogen_reflector_{1}.hpp", parent, cppClass.Name);
+                        hppData = generate_reflector_hpp(applicationPath, cppClass);
+                        path = string.Format(@"{0}\autogen\autogen_reflector_{1}.hpp", applicationPath, cppClass.Name);
                         filesCreated++;
                         File.WriteAllText(path, hppData);
 
                         cppData = generate_reflector_cpp(cppClass);
-                        path = string.Format(@"{0}\autogen\autogen_reflector_{1}.cpp", parent, cppClass.Name);
+                        path = string.Format(@"{0}\autogen\autogen_reflector_{1}.cpp", applicationPath, cppClass.Name);
                         filesCreated++;
                         File.WriteAllText(path, cppData);
                     }
