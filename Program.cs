@@ -15,36 +15,37 @@ namespace RytheTributary
         private static List<string> paths = new List<string>();
         private static List<int> primitveIndecies = new List<int>();
         private static List<int> objectIndecies = new List<int>();
+        private static CppCompilation engineAST = null;
         private static CppParserOptions options = new CppParserOptions();
         private static CodeWriterOptions cw_options = new CodeWriterOptions();
         private static CodeWriter cw = new CodeWriter(cw_options);
         private static string projectDirectory;
 
-        static string generate_reflector_hpp(string parent, CppClass cppClass)
+        static string generate_reflector_hpp(CppClass cppClass, string writePath)
         {
             cw.CurrentWriter.Dispose();
             cw = new CodeWriter(cw_options);
             cw.WriteLine("#pragma once");
             cw.WriteLine("#include <core/types/reflector.hpp>");
-            string headerPath = cppClass.SourceFile.ToLower().Replace(parent.ToLower(), "");
-            cw.WriteLine(string.Format("#include \"../{0}\"", headerPath));
-            cw.WriteLine(string.Format("struct {0};", cppClass.Name));
+            string headerPath = cppClass.SourceFile.ToLower().Replace($@"{projectDirectory}\{writePath}".ToLower(), "");
+            cw.WriteLine($"#include <{headerPath}>");
+            cw.WriteLine($"struct {cppClass.Name};");
             cw.WriteLine("namespace legion::core");
             cw.OpenBraceBlock();
-            cw.WriteLine(string.Format("L_NODISCARD auto make_reflector({0}& obj);", cppClass.Name));
-            cw.WriteLine(string.Format("L_NODISCARD const auto make_reflector(const {0}& obj);", cppClass.Name));
+            cw.WriteLine($"L_NODISCARD auto make_reflector({cppClass.Name}& obj);");
+            cw.WriteLine($"L_NODISCARD const auto make_reflector(const {cppClass.Name}& obj);");
             cw.CloseBraceBlock();
             var output = cw.ToString();
             return output;
         }
-        static string generate_prototype_hpp(string parent, CppClass cppClass)
+        static string generate_prototype_hpp(CppClass cppClassstring, string writePath)
         {
             cw.CurrentWriter.Dispose();
             cw = new CodeWriter(cw_options);
             cw.WriteLine("#pragma once");
             cw.WriteLine("#include <core/types/prototype.hpp>");
             string headerPath = cppClass.SourceFile.ToLower().Replace(parent.ToLower(), "");
-            cw.WriteLine(string.Format("#include \"../{0}\"", headerPath));
+            cw.WriteLine(string.Format("#include <{0}>", headerPath));
             cw.WriteLine(string.Format("struct {0};", cppClass.Name));
             cw.WriteLine("namespace legion::core");
             cw.OpenBraceBlock();
@@ -78,7 +79,6 @@ namespace RytheTributary
             cw.WriteLine("namespace legion::core");
             cw.OpenBraceBlock();
             generate_prototype_code(cppClass);
-            generate_prototype_code(cppClass, true);
             cw.CloseBraceBlock();
             var output = cw.ToString();
             return output;
@@ -247,61 +247,59 @@ namespace RytheTributary
                 }
             }
 
+            //Directory.CreateDirectory(string.Format(@"{0}\autogen", applicationPath));
+
+            ProcessDir(modulePaths.ToArray(), excludePatterns);
+
             foreach (string path in applicationPaths)
             {
-                ProcessDir(path, excludePatterns);
-            }
-
-            foreach(string path in modulePaths)
-            {
-                ProcessDir(path, excludePatterns);
+                ProcessApplication(path);
             }
 
             Console.WriteLine($"Checked {filesChecked} files and added {filesCreated} files in total.");
         }
 
-        static void ProcessDir(string path, List<Regex> excludePatterns)
+        static void ProcessDir(string[] pathsToProcess, List<Regex> excludePatterns)
         {
             string[] fileTypes = { "*.h", "*.hpp" };
             paths.Clear();
 
-            foreach (string type in fileTypes)
-                foreach (String fileDir in Directory.GetFiles(path, type, SearchOption.AllDirectories))
-                {
-                    bool matched = false;
-                    foreach (Regex regex in excludePatterns)
-                        if (regex.IsMatch(fileDir))
-                        {
-                            matched = true;
-                            break;
-                        }
-
-                    if (!matched)
+            foreach (string path in pathsToProcess)
+            {
+                foreach (string type in fileTypes)
+                    foreach (String fileDir in Directory.GetFiles(path, type, SearchOption.AllDirectories))
                     {
-                        Console.WriteLine("Adding File Directory to parse list: {0}", fileDir);
-                        filesChecked++;
-                        paths.Add(fileDir);
+                        bool matched = false;
+                        foreach (Regex regex in excludePatterns)
+                            if (regex.IsMatch(fileDir))
+                            {
+                                matched = true;
+                                break;
+                            }
+
+                        if (!matched)
+                        {
+                            Console.WriteLine("Adding File Directory to parse list: {0}", fileDir);
+                            filesChecked++;
+                            paths.Add(fileDir);
+                        }
                     }
-                }
+                Console.WriteLine("Done with {0}", path);
+                Console.WriteLine("");
+            }
 
-            var compilation = CppParser.ParseFiles(paths, options);
-            ProcessFile(compilation, path);
-            Console.WriteLine("Done with {0}", path);
-            Console.WriteLine("");
-        }
-
-        static void ProcessFile(CppCompilation compilation, string modulePath, string applicationPath)
-        {
-            Directory.CreateDirectory(string.Format(@"{0}\autogen", applicationPath));
-            options.IncludeFolders.Add(modulePath);
-
-            foreach (var diagnostic in compilation.Diagnostics.Messages)
+            //Parse the whole engine and its modules
+            engineAST = CppParser.ParseFiles(paths, options);
+            foreach (var diagnostic in engineAST.Diagnostics.Messages)
             {
                 if (diagnostic.Type != CppLogMessageType.Warning)
                     Console.WriteLine(diagnostic);
             }
+        }
 
-            foreach (CppClass cppClass in compilation.Classes)
+        static void ProcessApplication(string applicationPath)
+        {
+            foreach (CppClass cppClass in engineAST.Classes)
             {
                 foreach (CppAttribute attr in cppClass.Attributes)
                 {
@@ -311,23 +309,23 @@ namespace RytheTributary
                     if (attr.Name.Equals("reflectable"))
                     {
                         Console.WriteLine(cppClass.Name);
-                        string hppData = generate_prototype_hpp(applicationPath, cppClass);
-                        string path = string.Format(@"{0}\autogen\autogen_prototype_{1}.hpp", applicationPath, cppClass.Name);
+                        string hppData = generate_prototype_hpp(cppClass, modulePath);
+                        string path = $@"{applicationPath}\autogen\autogen_prototype_{cppClass.Name}.hpp";
+                        filesCreated++;
+                        File.WriteAllText(path, hppData);
+
+                        hppData = generate_reflector_hpp(cppClass, modulePath);
+                        path = $@"{applicationPath}\autogen\autogen_reflector_{cppClass.Name}.hpp";
                         filesCreated++;
                         File.WriteAllText(path, hppData);
 
                         string cppData = generate_prototype_cpp(cppClass);
-                        path = string.Format(@"{0}\autogen\autogen_prototype_{1}.cpp", applicationPath, cppClass.Name);
+                        path = $@"{applicationPath}\autogen\autogen_prototype_{cppClass.Name}.cpp";
                         filesCreated++;
                         File.WriteAllText(path, cppData);
 
-                        hppData = generate_reflector_hpp(applicationPath, cppClass);
-                        path = string.Format(@"{0}\autogen\autogen_reflector_{1}.hpp", applicationPath, cppClass.Name);
-                        filesCreated++;
-                        File.WriteAllText(path, hppData);
-
                         cppData = generate_reflector_cpp(cppClass);
-                        path = string.Format(@"{0}\autogen\autogen_reflector_{1}.cpp", applicationPath, cppClass.Name);
+                        path = $@"{applicationPath}\autogen\autogen_reflector_{cppClass.Name}.cpp";
                         filesCreated++;
                         File.WriteAllText(path, cppData);
                     }
