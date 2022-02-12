@@ -14,6 +14,7 @@ namespace RytheTributary
 
 
         private static List<string> paths = new List<string>();
+        private static Dictionary<string, string> autogenIncludes = new Dictionary<string, string>();
         private static CppCompilation engineAST = null;
         private static CppParserOptions options = new CppParserOptions();
 
@@ -21,11 +22,6 @@ namespace RytheTributary
 
         static void Main(string[] args)
         {
-            options = options.ConfigureForWindowsMsvc(CppTargetCpu.X86_64, CppVisualStudioVersion.VS2019);
-            options.AdditionalArguments.Add("-std=c++17");
-            options.AdditionalArguments.Add("-Wall");
-            options.ParseMacros = true;
-            options.ParseAttributes = true;
             if (args.Length == 0 || args[0] == "-help" || args[0] == "-h")
             {
                 Console.WriteLine(
@@ -44,12 +40,18 @@ namespace RytheTributary
             Regex moduleRegex = new Regex("-module=(.*)");
             Regex starReplace = new Regex("([^\\.*]*)\\*([^\\*]*)");
 
-            List<string> applicationPaths = new List<string>();
-            List<string> modulePaths = new List<string>();
+            Dictionary<string, string> applicationPaths = new Dictionary<string, string>();
+            Dictionary<string, string> modulePaths = new Dictionary<string, string>();
             List<Regex> excludePatterns = new List<Regex>();
+
             if (args[0].StartsWith("-root="))
                 projectDirectory = args[0].Replace("-root=", "");
 
+            options = options.ConfigureForWindowsMsvc(CppTargetCpu.X86_64, CppVisualStudioVersion.VS2019);
+            options.AdditionalArguments.Add("-std=c++17");
+            options.Defines.Add("L_AUTOGENACTIVE");
+            options.ParseMacros = true;
+            options.ParseAttributes = true;
             options.IncludeFolders.Add($@"{projectDirectory}deps\include\");
             options.IncludeFolders.Add($@"{projectDirectory}legion\engine\");
 
@@ -70,26 +72,34 @@ namespace RytheTributary
                 else if (applicationRegex.Match(command).Success)
                 {
                     var cmd = command.Replace("-app=", "");
-                    applicationPaths.Add($@"{projectDirectory}applications\{cmd}\");
+                    applicationPaths.Add(cmd, $@"{projectDirectory}applications\{cmd}\");
                 }
                 else if (moduleRegex.Match(command).Success)
                 {
                     var cmd = command.Replace("-module=", "");
-                    modulePaths.Add($@"{projectDirectory}legion\engine\{cmd}\");
+                    modulePaths.Add(cmd, $@"{projectDirectory}legion\engine\{cmd}\");
                 }
             }
 
-            paths.Clear();
-            paths.AddRange(modulePaths);
-            paths.AddRange(applicationPaths);
-
-            //Process the whole engine into an ast.
+            paths.AddRange(modulePaths.Values);
             ProcessDir(paths.ToArray(), excludePatterns);
 
-            foreach (string path in applicationPaths)
+            foreach (string name in modulePaths.Keys)
             {
-                Directory.CreateDirectory($@"{path}\autogen");
-                ProcessApplication(path);
+                Directory.CreateDirectory($@"{modulePaths[name]}autogen");
+                ProcessProject(name, modulePaths[name]);
+                File.WriteAllText($@"{modulePaths[name]}autogen\autogen.hpp", $"#pragma once \n #include_next \"autogen.hpp\" \n{autogenIncludes[name]}");
+            }
+            autogenIncludes.Clear();
+            paths.Clear();
+            paths.AddRange(applicationPaths.Values);
+            ProcessDir(paths.ToArray(), excludePatterns);
+
+            foreach (string name in applicationPaths.Keys)
+            {
+                Directory.CreateDirectory($@"{applicationPaths[name]}\autogen");
+                ProcessProject(name, applicationPaths[name]);
+                File.WriteAllText($@"{applicationPaths[name]}\autogen\autogen.hpp", $"#pragma once \n #include_next \"autogen.hpp\" \n{autogenIncludes[name]}");
             }
 
             Console.WriteLine($"Checked {filesChecked} files and added {filesCreated} files in total.");
@@ -124,18 +134,6 @@ namespace RytheTributary
                 Console.WriteLine("");
             }
 
-            //for (int i = 0; i < fileDirs.Count; i++)
-            //{
-            //    var idx = fileDirs[i].LastIndexOf(@"\");
-            //    options.IncludeFolders.Add(fileDirs[i].Substring(0, idx));
-            //}
-
-            //int idx = fileDirs.IndexOf(fileDirs.Find(dir => dir.Contains("core.hpp")));
-
-            //string temp = fileDirs[idx];
-            //fileDirs.RemoveAt(idx);
-            //fileDirs.Add(temp);
-
             //Parse the whole engine and its modules
             engineAST = CppParser.ParseFiles(fileDirs, options);
             foreach (var diagnostic in engineAST.Diagnostics.Messages)
@@ -144,42 +142,74 @@ namespace RytheTributary
                     Console.WriteLine(diagnostic);
             }
         }
-        static void ProcessApplication(string applicationPath)
+        static void ProcessProject(string projectName, string path)
         {
-            foreach (CppClass cppClass in engineAST.Classes)
+            SearchNamespaces(projectName, path, engineAST.Namespaces);
+            GenerateCode(projectName, path, engineAST.Classes);
+        }
+
+        static void GenerateCode(string projectName, string path, CppContainerList<CppClass> classes)
+        {
+            foreach (var cppStruct in classes)
             {
-                string depPath = "";
-                foreach (CppAttribute attr in cppClass.Attributes)
+                string depPath = cppStruct.SourceFile.ToLower().Contains($@"{projectDirectory.ToLower()}legion\engine\") ? cppStruct.SourceFile.ToLower().Replace($@"{projectDirectory.ToLower()}legion\engine\", "") : cppStruct.SourceFile.ToLower().Replace($@"{projectDirectory.ToLower()}applications\", "");
+                if (!depPath.Contains(projectName.ToLower()))
+                    continue;
+                
+                foreach (CppAttribute attr in cppStruct.Attributes)
                 {
-                    if (!attr.Scope.Equals("legion") && !attr.Scope.Equals("rythe"))
+                    if (!attr.Scope.Contains("legion") && !attr.Scope.Contains("rythe"))
                         continue;
 
                     if (attr.Name.Equals("reflectable"))
                     {
-                        Console.WriteLine(cppClass.Name);
-                        depPath = cppClass.SourceFile.ToLower().Contains($@"{projectDirectory.ToLower()}legion\engine\") ? cppClass.SourceFile.ToLower().Replace($@"{projectDirectory.ToLower()}legion\engine\", "") : cppClass.SourceFile.ToLower().Replace($@"{projectDirectory.ToLower()}applications\", "");
-                        string hppData = CodeGenerator.PrototypeHPP(cppClass.Name, depPath);
+                        if (!autogenIncludes.ContainsKey(projectName))
+                            autogenIncludes.Add(projectName, "");
+
+                        Console.WriteLine(cppStruct.Name);
+                        string hppData = CodeGenerator.PrototypeHPP(cppStruct.Name);
                         Console.WriteLine(hppData);
-                        string path = $@"{applicationPath}\autogen\autogen_prototype_{cppClass.Name}.hpp";
+                        string writePath = $@"{path}autogen\autogen_prototype_{cppStruct.Name}.hpp";
+                        autogenIncludes[projectName] += $"#include \"{writePath}\"\n".Replace(path + @"autogen\", "");
                         filesCreated++;
-                        File.WriteAllText(path, hppData);
+                        File.WriteAllText(writePath, hppData);
 
-                        //depPath = cppClass.SourceFile.ToLower().Contains($@"{projectDirectory.ToLower()}legion\engine\") ? cppClass.SourceFile.ToLower().Replace($@"{projectDirectory}legion\engine\", "") : cppClass.SourceFile.ToLower().Replace($@"{projectDirectory}applications\", "");
-                        hppData = CodeGenerator.ReflectorHPP(cppClass.Name, depPath);
-                        path = $@"{applicationPath}\autogen\autogen_reflector_{cppClass.Name}.hpp";
+                        hppData = CodeGenerator.ReflectorHPP(cppStruct.Name);
+                        Console.WriteLine(hppData);
+                        writePath = $@"{path}autogen\autogen_reflector_{cppStruct.Name}.hpp";
+                        autogenIncludes[projectName] += $"#include \"{writePath}\"\n".Replace(path + @"autogen\", "");
                         filesCreated++;
-                        File.WriteAllText(path, hppData);
+                        File.WriteAllText(writePath, hppData);
 
-                        string cppData = CodeGenerator.PrototypeCPP(cppClass.Name, cppClass.Fields);
-                        path = $@"{applicationPath}\autogen\autogen_prototype_{cppClass.Name}.cpp";
+                        depPath = cppStruct.SourceFile.ToLower().Contains($@"{projectDirectory.ToLower()}legion\engine\") ? cppStruct.SourceFile.ToLower().Replace($@"{projectDirectory.ToLower()}legion\engine\", "") : cppStruct.SourceFile.ToLower().Replace($@"{projectDirectory.ToLower()}applications\", "");
+                        string cppData = CodeGenerator.PrototypeCPP(cppStruct.Name, depPath, cppStruct.Fields);
+                        Console.WriteLine(cppData);
+                        writePath = $@"{path}\autogen\autogen_prototype_{cppStruct.Name}.cpp";
                         filesCreated++;
-                        File.WriteAllText(path, cppData);
+                        File.WriteAllText(writePath, cppData);
 
-                        cppData = CodeGenerator.ReflectorCPP(cppClass.Name, cppClass.Fields);
-                        path = $@"{applicationPath}\autogen\autogen_reflector_{cppClass.Name}.cpp";
+                        cppData = CodeGenerator.ReflectorCPP(cppStruct.Name, depPath, cppStruct.Fields);
+                        Console.WriteLine(cppData);
+                        writePath = $@"{path}\autogen\autogen_reflector_{cppStruct.Name}.cpp";
                         filesCreated++;
-                        File.WriteAllText(path, cppData);
+                        File.WriteAllText(writePath, cppData);
                     }
+                }
+            }
+        }
+
+        static void SearchNamespaces(string name, string path, CppContainerList<CppNamespace> Namespaces)
+        {
+            foreach (var nameSpace in Namespaces)
+            {
+                if (nameSpace.Namespaces.Count < 1)
+                {
+                    GenerateCode(name, path, nameSpace.Classes);
+                }
+                else
+                {
+                    SearchNamespaces(name, path, nameSpace.Namespaces);
+                    GenerateCode(name, path, nameSpace.Classes);
                 }
             }
         }

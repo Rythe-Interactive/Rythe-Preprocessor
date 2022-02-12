@@ -16,32 +16,30 @@ namespace RytheTributary
         private static CodeWriter cw = new CodeWriter(cw_options);
         public static string headerPath;
 
-        public static string ReflectorHPP(string className, string depPath)
+        public static string ReflectorHPP(string className)
         {
             cw.CurrentWriter.Dispose();
             cw = new CodeWriter(cw_options);
             cw.WriteLine("#pragma once");
             cw.WriteLine("#include <core/types/reflector.hpp>");
-            cw.WriteLine($"#include \"../../{depPath}\"");
-            cw.WriteLine($"struct {className};");
             cw.WriteLine("namespace legion::core");
             cw.OpenBraceBlock();
-            cw.WriteLine($"L_NODISCARD auto make_reflector({className}& obj);");
-            cw.WriteLine($"L_NODISCARD const auto make_reflector(const {className}& obj);");
+            cw.WriteLine($"struct {className};");
+            cw.WriteLine($"L_NODISCARD reflector make_reflector({className}& obj);");
+            cw.WriteLine($"L_NODISCARD const reflector make_reflector(const {className}& obj);");
             cw.CloseBraceBlock();
             var output = cw.ToString();
             return output;
         }
-        public static string PrototypeHPP(string className, string depPath)
+        public static string PrototypeHPP(string className)
         {
             cw.CurrentWriter.Dispose();
             cw = new CodeWriter(cw_options);
             cw.WriteLine("#pragma once");
             cw.WriteLine("#include <core/types/prototype.hpp>");
-            cw.WriteLine($"#include \"../../{depPath}\"");
-            cw.WriteLine($"struct {className};");
             cw.WriteLine("namespace legion::core");
             cw.OpenBraceBlock();
+            cw.WriteLine($"struct {className};");
             cw.WriteLine($"L_NODISCARD prototype make_prototype({className}& obj);");
             cw.WriteLine($"L_NODISCARD prototype make_prototype(const {className}& obj);");
             cw.CloseBraceBlock();
@@ -49,12 +47,13 @@ namespace RytheTributary
             return output;
         }
 
-       public static string ReflectorCPP(string className, CppContainerList<CppField> fields)
+        public static string ReflectorCPP(string className, string depPath, CppContainerList<CppField> fields)
         {
             cw.CurrentWriter.Dispose();
             cw = new CodeWriter(cw_options);
             cw.WriteLine("#pragma once");
             cw.WriteLine($"#include \"autogen_reflector_{className}.hpp\"");
+            cw.WriteLine($"#include \"../../{depPath}\"");
             cw.WriteLine("namespace legion::core");
             cw.OpenBraceBlock();
             reflectorFunction(className, fields);
@@ -63,12 +62,13 @@ namespace RytheTributary
             var output = cw.ToString();
             return output;
         }
-        public static string PrototypeCPP(string className, CppContainerList<CppField> fields)
+        public static string PrototypeCPP(string className, string depPath, CppContainerList<CppField> fields)
         {
             cw.CurrentWriter.Dispose();
             cw = new CodeWriter(cw_options);
             cw.WriteLine("#pragma once");
             cw.WriteLine($"#include \"autogen_prototype_{className}.hpp\"");
+            cw.WriteLine($"#include \"../../{depPath}\"");
             cw.WriteLine("namespace legion::core");
             cw.OpenBraceBlock();
             prototypeFunction(className, fields);
@@ -82,43 +82,52 @@ namespace RytheTributary
             primitveIndecies.Clear();
             objectIndecies.Clear();
             if (isConst)
-                cw.WriteLine($"L_NODISCARD const auto make_reflector(const {className}& obj)");
+                cw.WriteLine($"L_NODISCARD const reflector make_reflector(const {className}& obj)");
             else
-                cw.WriteLine($"L_NODISCARD auto make_reflector({className}& obj)");
+                cw.WriteLine($"L_NODISCARD reflector make_reflector({className}& obj)");
             cw.OpenBraceBlock();
             if (isConst)
                 cw.WriteLine("ptr_type address = reinterpret_cast<ptr_type>(std::addressof(obj));");
             cw.WriteLine("reflector refl;");
             cw.WriteLine($"refl.typeId = typeHash<{className}>();");
             cw.WriteLine($"refl.typeName = \"{className}\";");
-            cw.WriteLine(string.Format("refl.members = std::vector<member_reference>"));
-            cw.OpenBraceBlock();
-
-            for (int i = 0; i < fields.Count; i++)
+            cw.Write("refl.members = std::vector<member_reference>");
+            if (fields.Count > 0)
             {
-                switch (fields[i].Type.TypeKind)
-                {
-                    case CppTypeKind.Primitive:
-                        primitveIndecies.Add(i);
-                        break;
-                    case CppTypeKind.StructOrClass:
-                        objectIndecies.Add(i);
-                        break;
-                }
-            }
-            for (int i = 0; i < primitveIndecies.Count; i++)
-            {
-                var primitive = fields[primitveIndecies[i]];
-                cw.WriteLine("member_reference");
                 cw.OpenBraceBlock();
-                cw.WriteLine($"\"{primitive.Name}\",");
-                cw.WriteLine($"primitive_reference {{typeHash<{ primitive.Type.ToString()}>(), &obj.{primitive.Name}}}");
+
+                for (int i = 0; i < fields.Count; i++)
+                {
+                    switch (fields[i].Type.TypeKind)
+                    {
+                        case CppTypeKind.Primitive:
+                            primitveIndecies.Add(i);
+                            break;
+                        case CppTypeKind.StructOrClass:
+                            objectIndecies.Add(i);
+                            break;
+                    }
+                }
+                for (int i = 0; i < primitveIndecies.Count; i++)
+                {
+                    var primitive = fields[primitveIndecies[i]];
+                    cw.WriteLine("member_reference");
+                    cw.OpenBraceBlock();
+                    cw.WriteLine($"\"{primitive.Name}\",");
+                    cw.WriteLine($"primitive_reference {{typeHash<{ primitive.Type.ToString()}>(), &obj.{primitive.Name}}}");
+                    cw.CloseBraceBlock();
+                    if (i != primitveIndecies.Count - 1)
+                        cw.Write(",\n");
+                }
+
                 cw.CloseBraceBlock();
-                if (i != primitveIndecies.Count - 1)
-                    cw.Write(",\n");
+                cw.Write(";");
             }
-            cw.CloseBraceBlock();
-            cw.Write(";");
+            else
+            {
+                cw.Write("();\n");
+            }
+
             foreach (int idx in objectIndecies)
             {
                 cw.OpenBraceBlock();
@@ -142,33 +151,40 @@ namespace RytheTributary
             cw.WriteLine("prototype prot;");
             cw.WriteLine($"prot.typeId = typeHash<{className}>();");
             cw.WriteLine($"prot.typeName = \"{className}\";");
-            cw.WriteLine("prot.members = std::vector<member_value>");
-            cw.OpenBraceBlock();
-            for (int i = 0; i < fields.Count; i++)
+            cw.Write("prot.members = std::vector<member_value>");
+            if (fields.Count > 0)
             {
-                switch (fields[i].Type.TypeKind)
-                {
-                    case CppTypeKind.Primitive:
-                        primitveIndecies.Add(i);
-                        break;
-                    case CppTypeKind.StructOrClass:
-                        objectIndecies.Add(i);
-                        break;
-                }
-            }
-            for (int i = 0; i < primitveIndecies.Count; i++)
-            {
-                var primitive = fields[primitveIndecies[i]];
-                cw.WriteLine("member_value");
                 cw.OpenBraceBlock();
-                cw.WriteLine($"\"{primitive.Name}\",");
-                cw.WriteLine($"primitive_value {{typeHash<{primitive.Type.ToString()}>(),std::make_any<{primitive.Type.ToString()}>(obj.{primitive.Name})}}");
+                for (int i = 0; i < fields.Count; i++)
+                {
+                    switch (fields[i].Type.TypeKind)
+                    {
+                        case CppTypeKind.Primitive:
+                            primitveIndecies.Add(i);
+                            break;
+                        case CppTypeKind.StructOrClass:
+                            objectIndecies.Add(i);
+                            break;
+                    }
+                }
+                for (int i = 0; i < primitveIndecies.Count; i++)
+                {
+                    var primitive = fields[primitveIndecies[i]];
+                    cw.WriteLine("member_value");
+                    cw.OpenBraceBlock();
+                    cw.WriteLine($"\"{primitive.Name}\",");
+                    cw.WriteLine($"primitive_value {{typeHash<{primitive.Type.ToString()}>(),std::make_any<{primitive.Type.ToString()}>(obj.{primitive.Name})}}");
+                    cw.CloseBraceBlock();
+                    if (i != primitveIndecies.Count - 1)
+                        cw.Write(",\n");
+                }
                 cw.CloseBraceBlock();
-                if (i != primitveIndecies.Count - 1)
-                    cw.Write(",\n");
+                cw.Write(";");
             }
-            cw.CloseBraceBlock();
-            cw.Write(";");
+            else
+            {
+                cw.Write("();\n");
+            }
             foreach (int idx in objectIndecies)
             {
                 cw.OpenBraceBlock();
