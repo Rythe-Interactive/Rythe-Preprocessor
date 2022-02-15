@@ -25,8 +25,10 @@ namespace RytheTributary
             cw.WriteLine("namespace legion::core");
             cw.OpenBraceBlock();
             cw.WriteLine($"struct {className};");
-            cw.WriteLine($"L_NODISCARD reflector make_reflector({className}& obj);");
-            cw.WriteLine($"L_NODISCARD const reflector make_reflector(const {className}& obj);");
+            cw.WriteLine("template<>");
+            cw.WriteLine($"L_NODISCARD reflector make_reflector<{className}>({className}& obj);");
+            cw.WriteLine("template<>");
+            cw.WriteLine($"L_NODISCARD const reflector make_reflector<const {className}>(const {className}& obj);");
             cw.CloseBraceBlock();
             var output = cw.ToString();
             return output;
@@ -40,8 +42,8 @@ namespace RytheTributary
             cw.WriteLine("namespace legion::core");
             cw.OpenBraceBlock();
             cw.WriteLine($"struct {className};");
-            cw.WriteLine($"L_NODISCARD prototype make_prototype({className}& obj);");
-            cw.WriteLine($"L_NODISCARD prototype make_prototype(const {className}& obj);");
+            cw.WriteLine("template<>");
+            cw.WriteLine($"L_NODISCARD prototype make_prototype<{className}>(const {className}& obj);");
             cw.CloseBraceBlock();
             var output = cw.ToString();
             return output;
@@ -51,7 +53,6 @@ namespace RytheTributary
         {
             cw.CurrentWriter.Dispose();
             cw = new CodeWriter(cw_options);
-            cw.WriteLine("#pragma once");
             cw.WriteLine($"#include \"autogen_reflector_{className}.hpp\"");
             cw.WriteLine($"#include \"../../{depPath}\"");
             cw.WriteLine("namespace legion::core");
@@ -66,7 +67,6 @@ namespace RytheTributary
         {
             cw.CurrentWriter.Dispose();
             cw = new CodeWriter(cw_options);
-            cw.WriteLine("#pragma once");
             cw.WriteLine($"#include \"autogen_prototype_{className}.hpp\"");
             cw.WriteLine($"#include \"../../{depPath}\"");
             cw.WriteLine("namespace legion::core");
@@ -81,10 +81,11 @@ namespace RytheTributary
         {
             primitveIndecies.Clear();
             objectIndecies.Clear();
+            cw.WriteLine("template<>");
             if (isConst)
-                cw.WriteLine($"L_NODISCARD const reflector make_reflector(const {className}& obj)");
+                cw.WriteLine($"L_NODISCARD const reflector make_reflector<const {className}>(const {className}& obj)");
             else
-                cw.WriteLine($"L_NODISCARD reflector make_reflector({className}& obj)");
+                cw.WriteLine($"L_NODISCARD reflector make_reflector<{className}>({className}& obj)");
             cw.OpenBraceBlock();
             if (isConst)
                 cw.WriteLine("ptr_type address = reinterpret_cast<ptr_type>(std::addressof(obj));");
@@ -94,10 +95,11 @@ namespace RytheTributary
             cw.Write("refl.members = std::vector<member_reference>");
             if (fields.Count > 0)
             {
-                cw.OpenBraceBlock();
-
                 for (int i = 0; i < fields.Count; i++)
                 {
+                    if (fields[i].Visibility == CppVisibility.Private || fields[i].Visibility == CppVisibility.Protected)
+                        continue;
+
                     switch (fields[i].Type.TypeKind)
                     {
                         case CppTypeKind.Primitive:
@@ -108,20 +110,28 @@ namespace RytheTributary
                             break;
                     }
                 }
-                for (int i = 0; i < primitveIndecies.Count; i++)
-                {
-                    var primitive = fields[primitveIndecies[i]];
-                    cw.WriteLine("member_reference");
-                    cw.OpenBraceBlock();
-                    cw.WriteLine($"\"{primitive.Name}\",");
-                    cw.WriteLine($"primitive_reference {{typeHash<{ primitive.Type.ToString()}>(), &obj.{primitive.Name}}}");
-                    cw.CloseBraceBlock();
-                    if (i != primitveIndecies.Count - 1)
-                        cw.Write(",\n");
-                }
 
-                cw.CloseBraceBlock();
-                cw.Write(";");
+                if (primitveIndecies.Count > 0)
+                {
+                    cw.OpenBraceBlock();
+                    for (int i = 0; i < primitveIndecies.Count; i++)
+                    {
+                        var primitive = fields[primitveIndecies[i]];
+                        cw.WriteLine("member_reference");
+                        cw.OpenBraceBlock();
+                        cw.WriteLine($"\"{primitive.Name}\",");
+                        cw.WriteLine($"primitive_reference {{typeHash<{ primitive.Type.ToString()}>(), &obj.{primitive.Name}}}");
+                        cw.CloseBraceBlock();
+                        if (i != primitveIndecies.Count - 1)
+                            cw.Write(",\n");
+                    }
+                    cw.CloseBraceBlock();
+                    cw.Write(";");
+                }
+                else
+                {
+                    cw.Write("();\n");
+                }
             }
             else
             {
@@ -146,7 +156,8 @@ namespace RytheTributary
         {
             primitveIndecies.Clear();
             objectIndecies.Clear();
-            cw.WriteLine($"L_NODISCARD prototype make_prototype(const {className}& obj)");
+            cw.WriteLine("template<>");
+            cw.WriteLine($"L_NODISCARD prototype make_prototype<{className}>(const {className}& obj)");
             cw.OpenBraceBlock();
             cw.WriteLine("prototype prot;");
             cw.WriteLine($"prot.typeId = typeHash<{className}>();");
@@ -154,9 +165,11 @@ namespace RytheTributary
             cw.Write("prot.members = std::vector<member_value>");
             if (fields.Count > 0)
             {
-                cw.OpenBraceBlock();
                 for (int i = 0; i < fields.Count; i++)
                 {
+                    if (fields[i].Visibility == CppVisibility.Private || fields[i].Visibility == CppVisibility.Protected)
+                        continue;
+
                     switch (fields[i].Type.TypeKind)
                     {
                         case CppTypeKind.Primitive:
@@ -167,19 +180,27 @@ namespace RytheTributary
                             break;
                     }
                 }
-                for (int i = 0; i < primitveIndecies.Count; i++)
+                if (primitveIndecies.Count > 0)
                 {
-                    var primitive = fields[primitveIndecies[i]];
-                    cw.WriteLine("member_value");
                     cw.OpenBraceBlock();
-                    cw.WriteLine($"\"{primitive.Name}\",");
-                    cw.WriteLine($"primitive_value {{typeHash<{primitive.Type.ToString()}>(),std::make_any<{primitive.Type.ToString()}>(obj.{primitive.Name})}}");
+                    for (int i = 0; i < primitveIndecies.Count; i++)
+                    {
+                        var primitive = fields[primitveIndecies[i]];
+                        cw.WriteLine("member_value");
+                        cw.OpenBraceBlock();
+                        cw.WriteLine($"\"{primitive.Name}\",");
+                        cw.WriteLine($"primitive_value {{typeHash<{primitive.Type.ToString()}>(),std::make_any<{primitive.Type.ToString()}>(obj.{primitive.Name})}}");
+                        cw.CloseBraceBlock();
+                        if (i != primitveIndecies.Count - 1)
+                            cw.Write(",\n");
+                    }
                     cw.CloseBraceBlock();
-                    if (i != primitveIndecies.Count - 1)
-                        cw.Write(",\n");
+                    cw.Write(";");
                 }
-                cw.CloseBraceBlock();
-                cw.Write(";");
+                else
+                {
+                    cw.Write("();\n");
+                }
             }
             else
             {

@@ -2,7 +2,7 @@
   "profiles": {
     "RytheTributary": {
       "commandName": "Project",
-      "commandLineArgs": "-root=D:\\Repos\\Args-Engine\\ -module=core -app=sandbox -ex=deps -ex=glm -ex=autogen"
+      "commandLineArgs": "-root=D:\\Repos\\Args-Engine\\ -module=core -module=rendering -module=application -module=audio -app=sandbox -ex=deps -ex=glm -ex=autogen"
     }
   }
 }
