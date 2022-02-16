@@ -11,8 +11,6 @@ namespace RytheTributary
     {
         static int filesCreated = 0;
         static int filesChecked = 0;
-
-
         private static List<string> paths = new List<string>();
         private static Dictionary<string, string> autogenIncludes = new Dictionary<string, string>();
         private static CppCompilation engineAST = null;
@@ -162,6 +160,8 @@ namespace RytheTributary
                 if (!depPath.Contains(projectName.ToLower()))
                     continue;
 
+                depPath = depPath.Replace("\\", "/");
+
                 foreach (CppAttribute attr in cppStruct.Attributes)
                 {
                     if (!attr.Scope.Contains("legion") && !attr.Scope.Contains("rythe"))
@@ -170,7 +170,7 @@ namespace RytheTributary
                     if (attr.Name.Equals("reflectable"))
                     {
                         if (!autogenIncludes.ContainsKey(projectName))
-                            autogenIncludes.Add(projectName, "#pragma once\n#include <core\\platform\\platform.hpp>\n#if __has_include_next(\"autogen.hpp\")\n#include_next \"autogen.hpp\"\n#endif\n");
+                            autogenIncludes.Add(projectName, "#pragma once\n#include <core/platform/platform.hpp>\n#if __has_include_next(\"autogen.hpp\")\n#include_next \"autogen.hpp\"\n#endif\n");
 
                         WriteToHpp(projectName, cppStruct.Name, CodeGenerator.PrototypeHPP(cppStruct.Name, nameSpace), path, "prototype");
                         WriteToHpp(projectName, cppStruct.Name, CodeGenerator.ReflectorHPP(cppStruct.Name, nameSpace), path, "reflector");
