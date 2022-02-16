@@ -133,7 +133,6 @@ namespace RytheTributary
                         }
                     }
                 Console.WriteLine("Done with {0}", path);
-                Console.WriteLine("");
             }
 
             //Parse the whole engine and its modules
@@ -146,11 +145,11 @@ namespace RytheTributary
         }
         static void ProcessProject(string projectName, string path)
         {
-            SearchNamespaces(projectName, path, engineAST.Namespaces);
-            GenerateCode(projectName, path, engineAST.Classes);
+            SearchNamespaces(projectName, path, "", engineAST.Namespaces);
+            GenerateCode(projectName, path, "", engineAST.Classes);
         }
 
-        static void GenerateCode(string projectName, string path, CppContainerList<CppClass> classes)
+        static void GenerateCode(string projectName, string path, string nameSpace, CppContainerList<CppClass> classes)
         {
             foreach (var cppStruct in classes)
             {
@@ -173,28 +172,35 @@ namespace RytheTributary
                         if (!autogenIncludes.ContainsKey(projectName))
                             autogenIncludes.Add(projectName, "#pragma once\n#include <core\\platform\\platform.hpp>\n#if __has_include_next(\"autogen.hpp\")\n#include_next \"autogen.hpp\"\n#endif\n");
 
-                        string hppData = CodeGenerator.PrototypeHPP(cppStruct.Name);
-                        WriteToHpp(projectName,cppStruct.Name, CodeGenerator.PrototypeHPP(cppStruct.Name),path,"prototype");
-                        WriteToHpp(projectName, cppStruct.Name, CodeGenerator.ReflectorHPP(cppStruct.Name), path, "reflector");
+                        WriteToHpp(projectName, cppStruct.Name, CodeGenerator.PrototypeHPP(cppStruct.Name, nameSpace), path, "prototype");
+                        WriteToHpp(projectName, cppStruct.Name, CodeGenerator.ReflectorHPP(cppStruct.Name, nameSpace), path, "reflector");
 
-                        WriteToCPP(cppStruct.Name, CodeGenerator.PrototypeCPP(cppStruct.Name, depPath, cppStruct.Fields), path, "prototype");
-                        WriteToCPP(cppStruct.Name, CodeGenerator.ReflectorCPP(cppStruct.Name, depPath, cppStruct.Fields), path, "reflector");
+                        WriteToCPP(cppStruct.Name, CodeGenerator.PrototypeCPP(cppStruct.Name, nameSpace, depPath, cppStruct.Fields, cppStruct.Attributes), path, "prototype");
+                        WriteToCPP(cppStruct.Name, CodeGenerator.ReflectorCPP(cppStruct.Name, nameSpace, depPath, cppStruct.Fields, cppStruct.Attributes), path, "reflector");
                     }
                 }
             }
         }
-        static void SearchNamespaces(string name, string path, CppContainerList<CppNamespace> Namespaces)
+        static void SearchNamespaces(string name, string path, string parentNameSpace, CppContainerList<CppNamespace> Namespaces)
         {
+            string combinedNameSpace = "";
             foreach (var nameSpace in Namespaces)
             {
+                if (parentNameSpace.Length > 0 && nameSpace.Name.Length > 0)
+                    combinedNameSpace = parentNameSpace + "::" + nameSpace.Name;
+                else if (parentNameSpace.Length > 0)
+                    combinedNameSpace = parentNameSpace;
+                else
+                    combinedNameSpace = nameSpace.Name;
+
                 if (nameSpace.Namespaces.Count < 1)
                 {
-                    GenerateCode(name, path, nameSpace.Classes);
+                    GenerateCode(name, path, combinedNameSpace, nameSpace.Classes);
                 }
                 else
                 {
-                    SearchNamespaces(name, path, nameSpace.Namespaces);
-                    GenerateCode(name, path, nameSpace.Classes);
+                    SearchNamespaces(name, path, combinedNameSpace, nameSpace.Namespaces);
+                    GenerateCode(name, path, combinedNameSpace, nameSpace.Classes);
                 }
             }
         }

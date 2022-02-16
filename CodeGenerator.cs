@@ -14,9 +14,8 @@ namespace RytheTributary
 
         private static CodeWriterOptions cw_options = new CodeWriterOptions();
         private static CodeWriter cw = new CodeWriter(cw_options);
-        public static string headerPath;
 
-        public static string ReflectorHPP(string className)
+        public static string ReflectorHPP(string className, string nameSpace)
         {
             cw.CurrentWriter.Dispose();
             cw = new CodeWriter(cw_options);
@@ -33,7 +32,7 @@ namespace RytheTributary
             var output = cw.ToString();
             return output;
         }
-        public static string PrototypeHPP(string className)
+        public static string PrototypeHPP(string className, string nameSpace)
         {
             cw.CurrentWriter.Dispose();
             cw = new CodeWriter(cw_options);
@@ -49,7 +48,7 @@ namespace RytheTributary
             return output;
         }
 
-        public static string ReflectorCPP(string className, string depPath, CppContainerList<CppField> fields)
+        public static string ReflectorCPP(string className, string nameSpace, string depPath, CppContainerList<CppField> fields, CppContainerList<CppAttribute> attributes)
         {
             cw.CurrentWriter.Dispose();
             cw = new CodeWriter(cw_options);
@@ -57,13 +56,13 @@ namespace RytheTributary
             cw.WriteLine($"#include \"../../{depPath}\"");
             cw.WriteLine("namespace legion::core");
             cw.OpenBraceBlock();
-            reflectorFunction(className, fields);
-            reflectorFunction(className, fields, true);
+            reflectorFunction(className, nameSpace, fields, attributes);
+            reflectorFunction(className, nameSpace, fields, attributes, true);
             cw.CloseBraceBlock();
             var output = cw.ToString();
             return output;
         }
-        public static string PrototypeCPP(string className, string depPath, CppContainerList<CppField> fields)
+        public static string PrototypeCPP(string className, string nameSpace, string depPath, CppContainerList<CppField> fields, CppContainerList<CppAttribute> attributes)
         {
             cw.CurrentWriter.Dispose();
             cw = new CodeWriter(cw_options);
@@ -71,28 +70,38 @@ namespace RytheTributary
             cw.WriteLine($"#include \"../../{depPath}\"");
             cw.WriteLine("namespace legion::core");
             cw.OpenBraceBlock();
-            prototypeFunction(className, fields);
+            prototypeFunction(className, nameSpace, fields, attributes);
             cw.CloseBraceBlock();
             var output = cw.ToString();
             return output;
         }
 
-        static void reflectorFunction(string className, CppContainerList<CppField> fields, bool isConst = false)
+        static void reflectorFunction(string className, string nameSpace, CppContainerList<CppField> fields, CppContainerList<CppAttribute> attributes, bool isConst = false)
         {
             primitveIndecies.Clear();
             objectIndecies.Clear();
             cw.WriteLine("template<>");
             if (isConst)
-                cw.WriteLine($"L_NODISCARD const reflector make_reflector<const {className}>(const {className}& obj)");
+                cw.WriteLine($"L_NODISCARD const reflector make_reflector<const {nameSpace}::{className}>(const {nameSpace}::{className}& obj)");
             else
-                cw.WriteLine($"L_NODISCARD reflector make_reflector<{className}>({className}& obj)");
+                cw.WriteLine($"L_NODISCARD reflector make_reflector<{nameSpace}::{className}>({nameSpace}::{className}& obj)");
             cw.OpenBraceBlock();
             if (isConst)
                 cw.WriteLine("ptr_type address = reinterpret_cast<ptr_type>(std::addressof(obj));");
             cw.WriteLine("reflector refl;");
-            cw.WriteLine($"refl.typeId = typeHash<{className}>();");
-            cw.WriteLine($"refl.typeName = \"{className}\";");
-            cw.Write("refl.members = std::vector<member_reference>");
+            cw.WriteLine($"refl.typeId = typeHash<{nameSpace}::{className}>();");
+            cw.WriteLine($"refl.typeName = \"{nameSpace}::{className}\";");
+            if (attributes != null)
+            {
+                foreach (CppAttribute attr in attributes)
+                {
+                    cw.OpenBraceBlock();
+                    cw.WriteLine($"static const {attr.Name}_attribute {attr.Name}_attr{{{attr.Arguments}}};");
+                    cw.WriteLine($"refl.attributes.push_back(std::cref({attr.Name}_attr));");
+                    cw.CloseBraceBlock();
+                }
+            }
+            cw.WriteLine("refl.members = std::vector<member_reference>");
             if (fields.Count > 0)
             {
                 for (int i = 0; i < fields.Count; i++)
@@ -113,7 +122,7 @@ namespace RytheTributary
 
                 if (primitveIndecies.Count > 0)
                 {
-                    cw.OpenBraceBlock();
+                    cw.WriteLine("{");
                     for (int i = 0; i < primitveIndecies.Count; i++)
                     {
                         var primitive = fields[primitveIndecies[i]];
@@ -125,8 +134,7 @@ namespace RytheTributary
                         if (i != primitveIndecies.Count - 1)
                             cw.Write(",\n");
                     }
-                    cw.CloseBraceBlock();
-                    cw.Write(";");
+                    cw.WriteLine("};");
                 }
                 else
                 {
@@ -137,13 +145,24 @@ namespace RytheTributary
             {
                 cw.Write("();\n");
             }
-
             foreach (int idx in objectIndecies)
             {
                 cw.OpenBraceBlock();
                 cw.WriteLine($"auto nested_refl = make_reflector(obj.{fields[idx].Name});");
-                cw.WriteLine("members.emplace_back(nested_refl);");
+                cw.WriteLine($"refl.members.emplace_back(\"{fields[idx].Name}\",nested_refl);");
                 cw.CloseBraceBlock();
+            }
+            for (int i = 0; i < fields.Count; i++)
+            {
+                if (fields[i].Attributes == null)
+                    continue;
+                foreach (CppAttribute attr in fields[i].Attributes)
+                {
+                    cw.OpenBraceBlock();
+                    cw.WriteLine($"static const {attr.Name}_attribute {attr.Name}_attr{{{attr.Arguments}}};");
+                    cw.WriteLine($"refl.members[{i}].attributes.push_back(std::cref({attr.Name}_attr));");
+                    cw.CloseBraceBlock();
+                }
             }
             if (isConst)
                 cw.WriteLine("refl.data = reinterpret_cast<void*>(address);");
@@ -152,16 +171,26 @@ namespace RytheTributary
             cw.WriteLine("return refl;");
             cw.CloseBraceBlock();
         }
-        static void prototypeFunction(string className, CppContainerList<CppField> fields)
+        static void prototypeFunction(string className, string nameSpace, CppContainerList<CppField> fields, CppContainerList<CppAttribute> attributes)
         {
             primitveIndecies.Clear();
             objectIndecies.Clear();
             cw.WriteLine("template<>");
-            cw.WriteLine($"L_NODISCARD prototype make_prototype<{className}>(const {className}& obj)");
+            cw.WriteLine($"L_NODISCARD prototype make_prototype<{nameSpace}::{className}>(const {nameSpace}::{className}& obj)");
             cw.OpenBraceBlock();
             cw.WriteLine("prototype prot;");
-            cw.WriteLine($"prot.typeId = typeHash<{className}>();");
-            cw.WriteLine($"prot.typeName = \"{className}\";");
+            cw.WriteLine($"prot.typeId = typeHash<{nameSpace}::{className}>();");
+            cw.WriteLine($"prot.typeName = \"{nameSpace}::{className}\";");
+            if (attributes != null)
+            {
+                foreach (CppAttribute attr in attributes)
+                {
+                    cw.OpenBraceBlock();
+                    cw.WriteLine($"static const {attr.Name}_attribute {attr.Name}_attr{{{attr.Arguments}}};");
+                    cw.WriteLine($"prot.attributes.push_back(std::cref({attr.Name}_attr));");
+                    cw.CloseBraceBlock();
+                }
+            }
             cw.Write("prot.members = std::vector<member_value>");
             if (fields.Count > 0)
             {
@@ -182,7 +211,7 @@ namespace RytheTributary
                 }
                 if (primitveIndecies.Count > 0)
                 {
-                    cw.OpenBraceBlock();
+                    cw.WriteLine("{");
                     for (int i = 0; i < primitveIndecies.Count; i++)
                     {
                         var primitive = fields[primitveIndecies[i]];
@@ -194,8 +223,7 @@ namespace RytheTributary
                         if (i != primitveIndecies.Count - 1)
                             cw.Write(",\n");
                     }
-                    cw.CloseBraceBlock();
-                    cw.Write(";");
+                    cw.WriteLine("};");
                 }
                 else
                 {
@@ -210,8 +238,20 @@ namespace RytheTributary
             {
                 cw.OpenBraceBlock();
                 cw.WriteLine($"auto nested_prot = make_prototype(obj.{fields[idx].Name});");
-                cw.WriteLine("members.emplace_back(nested_prot);");
+                cw.WriteLine($"prot.members.emplace_back(\"{fields[idx].Name}\",nested_prot);");
                 cw.CloseBraceBlock();
+            }
+            for (int i = 0; i < fields.Count; i++)
+            {
+                if (fields[i].Attributes == null)
+                    continue;
+                foreach (CppAttribute attr in fields[i].Attributes)
+                {
+                    cw.OpenBraceBlock();
+                    cw.WriteLine($"static const {attr.Name}_attribute {attr.Name}_attr{{{attr.Arguments}}};");
+                    cw.WriteLine($"prot.members[{i}].attributes.push_back(std::cref({attr.Name}_attr));");
+                    cw.CloseBraceBlock();
+                }
             }
             cw.WriteLine("return prot;");
             cw.CloseBraceBlock();
