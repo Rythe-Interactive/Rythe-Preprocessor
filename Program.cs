@@ -4,6 +4,7 @@ using System.IO;
 using System.Text.RegularExpressions;
 using CppAst;
 using CppAst.CodeGen.Common;
+using System.Diagnostics;
 
 namespace RytheTributary
 {
@@ -34,11 +35,11 @@ namespace RytheTributary
             }
 
             Regex excludeRegex = new Regex("-ex=(.*)");
-            Regex applicationRegex = new Regex("-app=(.*)");
+            Regex includePath = new Regex("-include=(.*)");
+            Regex systemIncludePath = new Regex("-sysinclude=(.*)");
             Regex moduleRegex = new Regex("-module=(.*)");
             Regex starReplace = new Regex("([^\\.*]*)\\*([^\\*]*)");
 
-            Dictionary<string, string> applicationPaths = new Dictionary<string, string>();
             Dictionary<string, string> modulePaths = new Dictionary<string, string>();
             List<Regex> excludePatterns = new List<Regex>();
 
@@ -48,10 +49,9 @@ namespace RytheTributary
             options = options.ConfigureForWindowsMsvc(CppTargetCpu.X86_64, CppVisualStudioVersion.VS2019);
             options.AdditionalArguments.Add("-std=c++17");
             options.Defines.Add("L_AUTOGENACTIVE");
-            options.ParseMacros = true;
+            options.ParseMacros = false;
             options.ParseAttributes = true;
-            options.IncludeFolders.Add($@"{projectDirectory}deps\include\");
-            options.IncludeFolders.Add($@"{projectDirectory}legion\engine\");
+            options.ParseSystemIncludes = false;
 
             foreach (string command in args)
             {
@@ -67,15 +67,26 @@ namespace RytheTributary
 
                     excludePatterns.Add(new Regex(excludePattern));
                 }
-                else if (applicationRegex.Match(command).Success)
+                else if (includePath.Match(command).Success)
                 {
-                    var cmd = command.Replace("-app=", "");
-                    applicationPaths.Add(cmd, $@"{projectDirectory}applications\{cmd}\");
+                    var cmd = command.Replace("-include=", "");
+                    if (!cmd.EndsWith('\\'))
+                        cmd += "\\";
+                    options.IncludeFolders.Add($@"{projectDirectory}{cmd}");
+                }
+                else if (systemIncludePath.Match(command).Success)
+                {
+                    var cmd = command.Replace("-sysinclude=", "");
+                    if (!cmd.EndsWith('\\'))
+                        cmd += "\\";
+                    options.SystemIncludeFolders.Add($@"{projectDirectory}{cmd}");
                 }
                 else if (moduleRegex.Match(command).Success)
                 {
                     var cmd = command.Replace("-module=", "");
-                    modulePaths.Add(cmd, $@"{projectDirectory}legion\engine\{cmd}\");
+                    if (!cmd.EndsWith('\\'))
+                        cmd += "\\";
+                    modulePaths.Add(cmd, $@"{projectDirectory}{cmd}");
                 }
             }
 
@@ -88,18 +99,6 @@ namespace RytheTributary
                 ProcessProject(name, modulePaths[name]);
                 if (autogenIncludes.ContainsKey(name))
                     File.WriteAllText($@"{modulePaths[name]}autogen\autogen.hpp", $"{autogenIncludes[name]}");
-            }
-            autogenIncludes.Clear();
-            paths.Clear();
-            paths.AddRange(applicationPaths.Values);
-            ProcessDir(paths.ToArray(), excludePatterns);
-
-            foreach (string name in applicationPaths.Keys)
-            {
-                Directory.CreateDirectory($@"{applicationPaths[name]}\autogen");
-                ProcessProject(name, applicationPaths[name]);
-                if (autogenIncludes.ContainsKey(name))
-                    File.WriteAllText($@"{applicationPaths[name]}\autogen\autogen.hpp", $"{autogenIncludes[name]}");
             }
 
             Console.WriteLine($"Checked {filesChecked} files and added {filesCreated} files in total.");
@@ -130,11 +129,15 @@ namespace RytheTributary
                             fileDirs.Add(fileDir);
                         }
                     }
-                Console.WriteLine("Done with {0}", path);
+                Console.WriteLine("Done adding {0}", path);
             }
 
             //Parse the whole engine and its modules
+            Stopwatch watch = new Stopwatch();
+            watch.Start();
             engineAST = CppParser.ParseFiles(fileDirs, options);
+            watch.Stop();
+            Console.WriteLine(watch.Elapsed.TotalSeconds);
             foreach (var diagnostic in engineAST.Diagnostics.Messages)
             {
                 if (diagnostic.Type == CppLogMessageType.Error)
@@ -151,13 +154,25 @@ namespace RytheTributary
         {
             foreach (var cppStruct in classes)
             {
+                if (cppStruct.SourceFile == null)
+                    continue;
+
                 string depPath = " ";
                 if (cppStruct.SourceFile.ToLower().Contains($@"{projectDirectory.ToLower()}legion\engine\"))
                     depPath = cppStruct.SourceFile.ToLower().Replace($@"{projectDirectory.ToLower()}legion\engine\", "");
                 else
                     depPath = cppStruct.SourceFile.ToLower().Replace($@"{projectDirectory.ToLower()}applications\", "");
 
-                if (!depPath.Contains(projectName.ToLower()))
+                if (!cppStruct.SourceFile.ToLower().Contains(projectName.ToLower()))
+                    continue;
+
+                string source = File.ReadAllText(cppStruct.SourceFile);
+                Regex removeGroupComments = new Regex(@"\/\*[\s|\S]*\*\/");
+                Regex removeComments = new Regex(@"\/\/[\t| |\S]*");
+                Regex findStruct = new Regex($@"\b(?:struct|class)\b\s*\[\[legion::reflectable\]\]\s*{cppStruct.Name}[\s|<|>|\w|:| |\n]*\{{");
+                source = removeComments.Replace(source, "");
+                source = removeGroupComments.Replace(source, "");
+                if (!findStruct.IsMatch(source))
                     continue;
 
                 depPath = depPath.Replace("\\", "/");
@@ -177,6 +192,7 @@ namespace RytheTributary
 
                         WriteToCPP(cppStruct.Name, CodeGenerator.PrototypeCPP(cppStruct.Name, nameSpace, depPath, cppStruct.Fields, cppStruct.Attributes), path, "prototype");
                         WriteToCPP(cppStruct.Name, CodeGenerator.ReflectorCPP(cppStruct.Name, nameSpace, depPath, cppStruct.Fields, cppStruct.Attributes), path, "reflector");
+                        Console.WriteLine($"Generated files for {cppStruct.Name}");
                     }
                 }
             }
@@ -206,7 +222,6 @@ namespace RytheTributary
         }
         static void WriteToHpp(string projectName, string structName, string contents, string path, string type)
         {
-            Console.WriteLine(contents);
             string writePath = $@"{path}autogen\autogen_{type}_{structName}.hpp";
             autogenIncludes[projectName] += $"#include \"{writePath}\"\n".Replace(path + @"autogen\", "");
             filesCreated++;
@@ -214,7 +229,6 @@ namespace RytheTributary
         }
         static void WriteToCPP(string structName, string contents, string path, string type)
         {
-            Console.WriteLine(contents);
             string writePath = $@"{path}\autogen\autogen_{type}_{structName}.cpp";
             filesCreated++;
             File.WriteAllText(writePath, contents);
