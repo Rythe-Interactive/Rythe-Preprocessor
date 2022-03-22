@@ -21,13 +21,16 @@ namespace RytheTributary
             cw = new CodeWriter(cw_options);
             cw.WriteLine("#pragma once");
             cw.WriteLine("#include <core/types/reflector.hpp>");
-            cw.WriteLine("namespace legion::core");
+            cw.WriteLine($"namespace {nameSpace}");
             cw.OpenBraceBlock();
             cw.WriteLine($"struct {className};");
+            cw.CloseBraceBlock();
+            cw.WriteLine("namespace legion::core");
+            cw.OpenBraceBlock();
             cw.WriteLine("template<>");
-            cw.WriteLine($"L_NODISCARD reflector make_reflector<{className}>({className}& obj);");
+            cw.WriteLine($"L_NODISCARD reflector make_reflector<{nameSpace}::{className}>({nameSpace}::{className}& obj);");
             cw.WriteLine("template<>");
-            cw.WriteLine($"L_NODISCARD const reflector make_reflector<const {className}>(const {className}& obj);");
+            cw.WriteLine($"L_NODISCARD const reflector make_reflector<const {nameSpace}::{className}>(const {nameSpace}::{className}& obj);");
             cw.CloseBraceBlock();
             var output = cw.ToString();
             return output;
@@ -38,22 +41,26 @@ namespace RytheTributary
             cw = new CodeWriter(cw_options);
             cw.WriteLine("#pragma once");
             cw.WriteLine("#include <core/types/prototype.hpp>");
-            cw.WriteLine("namespace legion::core");
+            cw.WriteLine($"namespace {nameSpace}");
             cw.OpenBraceBlock();
             cw.WriteLine($"struct {className};");
+            cw.CloseBraceBlock();
+            cw.WriteLine("namespace legion::core");
+            cw.OpenBraceBlock();
             cw.WriteLine("template<>");
-            cw.WriteLine($"L_NODISCARD prototype make_prototype<{className}>(const {className}& obj);");
+            cw.WriteLine($"L_NODISCARD prototype make_prototype<{nameSpace}::{className}>(const {nameSpace}::{className}& obj);");
             cw.CloseBraceBlock();
             var output = cw.ToString();
             return output;
         }
 
-        public static string ReflectorCPP(string className, string nameSpace, string depPath, CppContainerList<CppField> fields, CppContainerList<CppAttribute> attributes)
+        public static string ReflectorInl(string className, string nameSpace, string depPath, CppContainerList<CppField> fields, CppContainerList<CppAttribute> attributes)
         {
             cw.CurrentWriter.Dispose();
             cw = new CodeWriter(cw_options);
             cw.WriteLine($"#include \"autogen_reflector_{className}.hpp\"");
             cw.WriteLine($"#include \"../../{depPath}\"");
+            cw.WriteLine("namespace legion { using namespace core; }");
             cw.WriteLine("namespace legion::core");
             cw.OpenBraceBlock();
             reflectorFunction(className, nameSpace, fields, attributes);
@@ -62,12 +69,13 @@ namespace RytheTributary
             var output = cw.ToString();
             return output;
         }
-        public static string PrototypeCPP(string className, string nameSpace, string depPath, CppContainerList<CppField> fields, CppContainerList<CppAttribute> attributes)
+        public static string PrototypeInl(string className, string nameSpace, string depPath, CppContainerList<CppField> fields, CppContainerList<CppAttribute> attributes)
         {
             cw.CurrentWriter.Dispose();
             cw = new CodeWriter(cw_options);
             cw.WriteLine($"#include \"autogen_prototype_{className}.hpp\"");
             cw.WriteLine($"#include \"../../{depPath}\"");
+            cw.WriteLine("namespace legion { using namespace core; }");
             cw.WriteLine("namespace legion::core");
             cw.OpenBraceBlock();
             prototypeFunction(className, nameSpace, fields, attributes);
@@ -152,6 +160,7 @@ namespace RytheTributary
                 cw.WriteLine($"refl.members.emplace_back(\"{fields[idx].Name}\",nested_refl);");
                 cw.CloseBraceBlock();
             }
+            int count = 0;
             for (int i = 0; i < fields.Count; i++)
             {
                 if (fields[i].Attributes == null)
@@ -160,9 +169,10 @@ namespace RytheTributary
                 {
                     cw.OpenBraceBlock();
                     cw.WriteLine($"static const {attr.Name}_attribute {attr.Name}_attr{{{attr.Arguments}}};");
-                    cw.WriteLine($"refl.members[{i}].attributes.push_back(std::cref({attr.Name}_attr));");
+                    cw.WriteLine($"refl.members[{count}].attributes.push_back(std::cref({attr.Name}_attr));");
                     cw.CloseBraceBlock();
                 }
+                count++;
             }
             if (isConst)
                 cw.WriteLine("refl.data = reinterpret_cast<void*>(address);");
@@ -186,7 +196,7 @@ namespace RytheTributary
                 foreach (CppAttribute attr in attributes)
                 {
                     cw.OpenBraceBlock();
-                    cw.WriteLine($"static const {attr.Name}_attribute {attr.Name}_attr{{{attr.Arguments}}};");
+                    cw.WriteLine($"static const {attr.Scope}::{attr.Name}_attribute {attr.Name}_attr{{{attr.Arguments}}};");
                     cw.WriteLine($"prot.attributes.push_back(std::cref({attr.Name}_attr));");
                     cw.CloseBraceBlock();
                 }
@@ -241,6 +251,7 @@ namespace RytheTributary
                 cw.WriteLine($"prot.members.emplace_back(\"{fields[idx].Name}\",nested_prot);");
                 cw.CloseBraceBlock();
             }
+            int count = 0;
             for (int i = 0; i < fields.Count; i++)
             {
                 if (fields[i].Attributes == null)
@@ -248,10 +259,11 @@ namespace RytheTributary
                 foreach (CppAttribute attr in fields[i].Attributes)
                 {
                     cw.OpenBraceBlock();
-                    cw.WriteLine($"static const {attr.Name}_attribute {attr.Name}_attr{{{attr.Arguments}}};");
-                    cw.WriteLine($"prot.members[{i}].attributes.push_back(std::cref({attr.Name}_attr));");
+                    cw.WriteLine($"static const {attr.Scope}::{attr.Name}_attribute {attr.Name}_attr{{{attr.Arguments}}};");
+                    cw.WriteLine($"prot.members[{count}].attributes.push_back(std::cref({attr.Name}_attr));");
                     cw.CloseBraceBlock();
                 }
+                count++;
             }
             cw.WriteLine("return prot;");
             cw.CloseBraceBlock();

@@ -4,6 +4,9 @@ Microsoft Visual Studio Solution File, Format Version 12.00
 VisualStudioVersion = 16.0.32106.194
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "RytheTributary", "RytheTributary.csproj", "{F9D8AF17-88C7-4AEB-A605-15A285D8C73A}"
+	ProjectSection(ProjectDependencies) = postProject
+		{E470BD03-27DE-4091-9691-4BB7C13FC3A6} = {E470BD03-27DE-4091-9691-4BB7C13FC3A6}
+	EndProjectSection
 EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "CppAst", "..\CppAst.NET\src\CppAst\CppAst.csproj", "{E470BD03-27DE-4091-9691-4BB7C13FC3A6}"
 EndProject

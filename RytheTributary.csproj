@@ -5,6 +5,12 @@
     <TargetFramework>net5.0</TargetFramework>
   </PropertyGroup>
 
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|AnyCPU'">
+    <OutputPath>D:\Repos\Rythe-legacy\tools\RythePreprocessor\</OutputPath>
+    <DebugType>full</DebugType>
+    <DebugSymbols>true</DebugSymbols>
+  </PropertyGroup>
+
   <ItemGroup>
     <PackageReference Include="CppAst" Version="0.8.0-alpha-001" />
     <PackageReference Include="CppAst.CodeGen" Version="0.7.0" />

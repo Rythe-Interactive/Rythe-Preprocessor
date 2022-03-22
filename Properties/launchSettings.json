@@ -1,8 +1,9 @@
 {
   "profiles": {
     "RytheTributary": {
-      "commandName": "Project",
-      "commandLineArgs": "-root=D:\\Repos\\Rythe-legacy\\ -sysinclude=deps\\include -sysinclude=legion\\engine\\ -module=legion\\engine\\core -module=legion\\engine\\rendering -module=legion\\engine\\application -module=legion\\engine\\audio -module=applications\\sandbox -ex=deps -ex=glm -ex=autogen"
+      "commandName": "Executable",
+      "executablePath": "D:\\Repos\\Rythe-legacy\\tools\\RythePreprocessor\\RytheTributary.exe",
+      "commandLineArgs": "-include=D:\\Repos\\Rythe-legacy\\deps\\include -moduleinclude=D:\\Repos\\Rythe-legacy\\legion\\engine -module=core -ex=deps -ex=glm -ex=autogen"
     }
   }
 }
