@@ -12,7 +12,8 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="CppAst" Version="0.8.0-alpha-001" />
-    <PackageReference Include="CppAst.CodeGen" Version="0.7.0" />
+    <PackageReference Include="CppAst" Version="0.8.0" />
+    <PackageReference Include="CppAst.CodeGen" Version="0.8.2" />
+    <PackageReference Include="libclang" Version="13.0.1" />
   </ItemGroup>
 </Project>
