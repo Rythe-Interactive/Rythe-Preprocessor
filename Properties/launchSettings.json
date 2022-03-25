@@ -2,7 +2,9 @@
   "profiles": {
     "RytheTributary": {
       "commandName": "Project",
-      "commandLineArgs": " -moduleroot=\"..\\..\\..\\legion\\engine\" -include=\"..\\..\\..\\deps\\include\" -module=\"core\" -ex=deps -ex=glm -ex=autogen"
+      "commandLineArgs": " -moduleroot=..\\..\\applications\\ -include=..\\..\\legion\\engine -include=..\\..\\deps\\include -module=\"sandbox\" -ex=deps -ex=glm -ex=autogen",
+      "workingDirectory": "D:\\Repos\\Rythe-legacy\\tools\\RythePreprocessor",
+      "nativeDebugging": true
     }
   }
 }

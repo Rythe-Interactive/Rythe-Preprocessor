@@ -197,6 +197,8 @@ namespace RytheTributary
         {
             foreach (var cppStruct in classes)
             {
+                if (cppStruct.Name.Equals("example_comp"))
+                    Console.WriteLine("Example_comp");
                 if (cppStruct.SourceFile == null)
                     continue;
 
@@ -208,19 +210,16 @@ namespace RytheTributary
                     depPath = cppStruct.SourceFile.Replace(moduleRoot + "\\", "");
                 depPath = depPath.Replace("\\", "/");
 
-                //I don't remeber why we added this
-                //string source = File.ReadAllText(cppStruct.SourceFile);
-                //Regex removeGroupComments = new Regex(@"\/\*[\s|\S]*?\*\/");
-                //Regex removeComments = new Regex(@"\/\/[\t| |\S]*");
-                //Regex findStruct = new Regex($@"\b(?:struct|class)\b\s*\[\[{attribute.Scope}::{attribute.Name}\]\]\s*{cppStruct.Name}[\s|<|>|\w|:| |\n]*\{{");
-                //source = removeComments.Replace(source, "");
-                //source = removeGroupComments.Replace(source, "");
-                //if (!findStruct.IsMatch(source))
-                //    continue;
+                string source = File.ReadAllText(cppStruct.SourceFile);
+                Regex removeGroupComments = new Regex(@"\/\*[\s|\S]*?\*\/");
+                Regex removeComments = new Regex(@"\/\/[\t| |\S]*");
+                source = removeComments.Replace(source, "");
+                source = removeGroupComments.Replace(source, "");
 
                 foreach (CppAttribute attr in cppStruct.Attributes)
                 {
-                    if (!attr.Scope.Contains("legion") && !attr.Scope.Contains("rythe"))
+                    Regex findStruct = new Regex($@"\b(?:struct|class)\b\s*\[\[{attr.Scope}::{attr.Name}\]\]\s*{cppStruct.Name}[\s|<|>|\w|:| |\n]*\{{");
+                    if (!findStruct.IsMatch(source))
                         continue;
 
                     if (attr.Name.Equals("reflectable"))
