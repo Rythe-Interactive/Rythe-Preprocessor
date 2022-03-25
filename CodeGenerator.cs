@@ -21,10 +21,16 @@ namespace RytheTributary
             cw = new CodeWriter(cw_options);
             cw.WriteLine("#pragma once");
             cw.WriteLine("#include <core/types/reflector.hpp>");
-            cw.WriteLine($"namespace {nameSpace}");
-            cw.OpenBraceBlock();
+            if (nameSpace.Length > 0)
+            {
+                cw.WriteLine($"namespace {nameSpace}");
+                cw.OpenBraceBlock();
+            }
             cw.WriteLine($"struct {className};");
-            cw.CloseBraceBlock();
+            if (nameSpace.Length > 0)
+            {
+                cw.CloseBraceBlock();
+            }
             cw.WriteLine("namespace legion::core");
             cw.OpenBraceBlock();
             cw.WriteLine("template<>");
@@ -41,10 +47,16 @@ namespace RytheTributary
             cw = new CodeWriter(cw_options);
             cw.WriteLine("#pragma once");
             cw.WriteLine("#include <core/types/prototype.hpp>");
-            cw.WriteLine($"namespace {nameSpace}");
-            cw.OpenBraceBlock();
+            if (nameSpace.Length > 0)
+            {
+                cw.WriteLine($"namespace {nameSpace}");
+                cw.OpenBraceBlock();
+            }
             cw.WriteLine($"struct {className};");
-            cw.CloseBraceBlock();
+            if (nameSpace.Length > 0)
+            {
+                cw.CloseBraceBlock();
+            }
             cw.WriteLine("namespace legion::core");
             cw.OpenBraceBlock();
             cw.WriteLine("template<>");

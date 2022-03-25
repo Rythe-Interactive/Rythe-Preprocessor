@@ -79,7 +79,8 @@ namespace RytheTributary
                         cmd += "\\";
                     moduleRoot = Directory.GetParent(cmd).ToString();
                     options.IncludeFolders.Add(moduleRoot);
-                    Console.WriteLine(moduleRoot);
+                    Console.WriteLine($"Moduleroot:{moduleRoot}");
+                    log += $"Moduleroot:{ moduleRoot}\n";
                 }
                 else if (includePath.Match(command).Success)
                 {
@@ -87,7 +88,8 @@ namespace RytheTributary
                     if (!cmd.EndsWith('\\'))
                         cmd += "\\";
                     options.SystemIncludeFolders.Add(Directory.GetParent(cmd).ToString());
-                    Console.WriteLine(Directory.GetParent(cmd).ToString());
+                    Console.WriteLine($"Include Directory: {Directory.GetParent(cmd).ToString()}");
+                    log += $"Include Directory: {Directory.GetParent(cmd).ToString()}\n";
                 }
                 else if (moduleRegex.Match(command).Success)
                 {
@@ -96,10 +98,10 @@ namespace RytheTributary
                 }
             }
 
-            if(moduleName == null)
+            if (moduleName == null)
             {
                 var split = moduleRoot.Split('\\');
-                moduleName = split[split.Length - 2];
+                moduleName = split[split.Length - 1];
             }
 
             Console.WriteLine($"Module Name: {moduleName}");
@@ -107,15 +109,15 @@ namespace RytheTributary
 
             if (ProcessDir())
             {
-                Directory.CreateDirectory($@"{moduleRoot}autogen");
+                Directory.CreateDirectory($@"{moduleRoot}\{moduleName}\autogen");
                 SearchNamespaces(engineAST.Namespaces);
                 GenerateCode(engineAST.Classes);
 
                 if (autogenHeaders.ContainsKey(moduleName))
-                    File.WriteAllText($@"{moduleRoot}autogen\autogen.hpp", $"{autogenHeaders[moduleName]}\n");
+                    File.WriteAllText($@"{moduleRoot}\{moduleName}\autogen\autogen.hpp", $"{autogenHeaders[moduleName]}\n");
 
                 if (autogenInline.ContainsKey(moduleName))
-                    File.WriteAllText($@"{moduleRoot}autogen\autogen.cpp", $"{autogenInline[moduleName]}");
+                    File.WriteAllText($@"{moduleRoot}\{moduleName}\autogen\autogen.cpp", $"{autogenInline[moduleName]}");
             }
             Console.WriteLine($"Scanned {filesChecked} files and generated {filesCreated} files in total.");
             log += $"Scanned {filesChecked} files and generated {filesCreated} files in total.\n";
@@ -130,7 +132,7 @@ namespace RytheTributary
             var fileDirs = new List<string>();
 
             foreach (string type in fileTypes)
-                foreach (String fileDir in Directory.GetFiles(moduleRoot, type, SearchOption.AllDirectories))
+                foreach (String fileDir in Directory.GetFiles(moduleRoot + "\\" + moduleName, type, SearchOption.AllDirectories))
                 {
                     bool matched = false;
                     foreach (Regex regex in excludePatterns)
@@ -145,6 +147,7 @@ namespace RytheTributary
                         if (!File.Exists(fileDir))
                         {
                             Console.WriteLine($"[ProcessDir] File Path {fileDir} does not exist");
+                            log += $"[ProcessDir] File Path {fileDir} does not exist\n";
                             continue;
                         }
 
@@ -154,8 +157,8 @@ namespace RytheTributary
                         log += $"Adding File Directory to parse list: {fileDir}\n";
                     }
                 }
-            Console.WriteLine($"Finished searching {moduleRoot}");
-            log += $"Finished searching {moduleRoot}\n";
+            Console.WriteLine($"Finished searching {moduleRoot}\\{moduleName}");
+            log += $"Finished searching {moduleRoot}\\{moduleName}\n";
 
             //Parse the whole engine and its modules
             Stopwatch watch = new Stopwatch();
@@ -163,19 +166,7 @@ namespace RytheTributary
             engineAST = CppParser.ParseFiles(fileDirs, options);
             watch.Stop();
             Console.WriteLine($"Classes Found: {engineAST.Classes.Count}");
-            log += $"Classes Found: {engineAST.Classes.Count}";
-            if (!engineAST.HasErrors)
-            {
-                Console.WriteLine($"AST Generation completed in {watch.Elapsed.TotalSeconds} seconds");
-                log += $"AST Generation completed in {watch.Elapsed.TotalSeconds} seconds\n";
-                return true;
-            }
-            else
-            {
-                Console.WriteLine("AST Generation had errors and did not complete");
-                log += "AST Generation had errors and did not complete\n";
-            }
-
+            log += $"Classes Found: {engineAST.Classes.Count}\n";
             foreach (var diagnostic in engineAST.Diagnostics.Messages)
             {
                 if (diagnostic.Type == CppLogMessageType.Warning)
@@ -188,7 +179,18 @@ namespace RytheTributary
                     log += "E:" + diagnostic.Text + "\n";
                 }
             }
-            return false;
+            if (!engineAST.HasErrors)
+            {
+                Console.WriteLine($"AST Generation completed in {watch.Elapsed.TotalSeconds} seconds");
+                log += $"AST Generation completed in {watch.Elapsed.TotalSeconds} seconds\n";
+                return true;
+            }
+            else
+            {
+                Console.WriteLine("AST Generation had errors and did not complete");
+                log += "AST Generation had errors and did not complete\n";
+                return false;
+            }
         }
 
         static void GenerateCode(CppContainerList<CppClass> classes, string nameSpace = "")
@@ -202,18 +204,20 @@ namespace RytheTributary
                     continue;
 
                 string depPath = " ";
-                if (cppStruct.SourceFile.Contains(moduleRoot))
-                    depPath = cppStruct.SourceFile.Replace(moduleRoot, "");
+                if (cppStruct.SourceFile.Contains(moduleRoot + "\\"))
+                    depPath = cppStruct.SourceFile.Replace(moduleRoot + "\\", "");
                 depPath = depPath.Replace("\\", "/");
 
-                string source = File.ReadAllText(cppStruct.SourceFile);
-                Regex removeGroupComments = new Regex(@"\/\*[\s|\S]*?\*\/");
-                Regex removeComments = new Regex(@"\/\/[\t| |\S]*");
-                Regex findStruct = new Regex($@"\b(?:struct|class)\b\s*\[\[legion::reflectable\]\]\s*{cppStruct.Name}[\s|<|>|\w|:| |\n]*\{{");
-                source = removeComments.Replace(source, "");
-                source = removeGroupComments.Replace(source, "");
-                if (!findStruct.IsMatch(source))
-                    continue;
+                //I don't remeber why we added this
+                //string source = File.ReadAllText(cppStruct.SourceFile);
+                //Regex removeGroupComments = new Regex(@"\/\*[\s|\S]*?\*\/");
+                //Regex removeComments = new Regex(@"\/\/[\t| |\S]*");
+                //Regex findStruct = new Regex($@"\b(?:struct|class)\b\s*\[\[{attribute.Scope}::{attribute.Name}\]\]\s*{cppStruct.Name}[\s|<|>|\w|:| |\n]*\{{");
+                //source = removeComments.Replace(source, "");
+                //source = removeGroupComments.Replace(source, "");
+                //if (!findStruct.IsMatch(source))
+                //    continue;
+
                 foreach (CppAttribute attr in cppStruct.Attributes)
                 {
                     if (!attr.Scope.Contains("legion") && !attr.Scope.Contains("rythe"))
@@ -261,14 +265,14 @@ namespace RytheTributary
         }
         static void WriteToHpp(string structName, string contents, string type)
         {
-            string writePath = $@"{moduleRoot}autogen\autogen_{type}_{structName}.hpp";
-            autogenHeaders[moduleName] += $"#include \"{writePath}\"\n".Replace(moduleRoot + @"autogen\", "");
+            string writePath = $@"{moduleRoot}\{moduleName}\autogen\autogen_{type}_{structName}.hpp";
+            autogenHeaders[moduleName] += $"#include \"{writePath}\"\n".Replace($@"{moduleRoot}\{moduleName}\autogen\", "");
             filesCreated++;
             File.WriteAllText(writePath, contents);
         }
         static void WriteToInl(string structName, string contents, string type)
         {
-            string writePath = $@"{moduleRoot}autogen\autogen_{type}_{structName}.inl";
+            string writePath = $@"{moduleRoot}\{moduleName}\autogen\autogen_{type}_{structName}.inl";
             autogenInline[moduleName] += $"#include \"autogen_{type}_{structName}.inl\"\n";
             filesCreated++;
             File.WriteAllText(writePath, contents);
