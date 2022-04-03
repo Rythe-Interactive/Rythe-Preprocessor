@@ -9,43 +9,121 @@ namespace RytheTributary
 {
     class Program
     {
-        private static Dictionary<string, string> autogenHeaders = new Dictionary<string, string>();
-        private static Dictionary<string, string> autogenInline = new Dictionary<string, string>();
+        private static string autogenHeaders;
+        private static string autogenImpl;
         public static uint filesCreated = 0;
+
+        private static string autogenFolderPath;
 
         static void Main(string[] args)
         {
             Logger.Init();
-            if(!CLArgs.Parse(args))
+
+            if (!CLArgs.Parse(args))
                 return;
+
+            Logger.Log("Enter Main", LogLevel.trace);
 
             Logger.Log($"Module Name: {CLArgs.moduleName}", LogLevel.info);
 
+            autogenFolderPath = $@"{CLArgs.moduleRoot}\{CLArgs.moduleName}\autogen";
+
+            string autogenHeaderPath = $@"{autogenFolderPath}\autogen.hpp";
+            string autogenImplPath = $@"{autogenFolderPath}\autogen.cpp";
+
+            if (Directory.Exists(autogenFolderPath))
+                IterateFiles(autogenFolderPath, new string[] { "*" }, (string filePath) =>
+                {
+                    File.Delete(filePath);
+                }, SearchOption.TopDirectoryOnly);
+            else
+                Directory.CreateDirectory(autogenFolderPath);
+
+            File.WriteAllText(autogenHeaderPath, "#pragma once\n#include <core/platform/platform.hpp>\n#if !defined(L_AUTOGENACTIVE)\nL_ERROR(\"Preprocessor still busy, or crashed.\");\n#endif\n");
+            File.WriteAllText(autogenImplPath, "#include <core/platform/platform.hpp>\n#if !defined(L_AUTOGENACTIVE)\nL_ERROR(\"Preprocessor still busy, or crashed.\");\n#endif\n");
+
             if (ModuleAST.GenerateAST())
             {
-                Directory.CreateDirectory($@"{CLArgs.moduleRoot}\{CLArgs.moduleName}\autogen");
+                autogenHeaders = "#pragma once\n#include <core/platform/platform.hpp>\n#if __has_include_next(\"autogen.hpp\")\n#include_next \"autogen.hpp\"\n#endif\n";
+                autogenImpl = "#include \"autogen.hpp\"\n";
+
+                AddOverrideFiles();
+
                 SearchNamespaces(ModuleAST.Namespaces);
                 GenerateCode(ModuleAST.Classes);
 
-                if (autogenHeaders.ContainsKey(CLArgs.moduleName))
-                    File.WriteAllText($@"{CLArgs.moduleRoot}\{CLArgs.moduleName}\autogen\autogen.hpp", $"{autogenHeaders[CLArgs.moduleName]}\n");
+                File.WriteAllText(autogenHeaderPath, $"{autogenHeaders}\n");
 
-                if (autogenInline.ContainsKey(CLArgs.moduleName))
-                    File.WriteAllText($@"{CLArgs.moduleRoot}\{CLArgs.moduleName}\autogen\autogen.cpp", $"{autogenInline[CLArgs.moduleName]}");
+                File.WriteAllText(autogenImplPath, $"{autogenImpl}");
             }
             Logger.Log($"Scanned {ModuleAST.filesChecked} files and generated {filesCreated} files in total.", LogLevel.info);
 
+            Logger.Log("Exit Main", LogLevel.trace);
             Logger.WriteToFile("PreProcessor");
+        }
+
+        static string GetRelativePath(string basePath, string targetPath)
+        {
+            return (new Uri(basePath)).MakeRelativeUri(new Uri(targetPath)).OriginalString;
+        }
+
+        static void IterateFiles(string path, string[] searchPatterns, Action<string> fileIteration, SearchOption searchOption = SearchOption.AllDirectories)
+        {
+            foreach (string patern in searchPatterns)
+                foreach (var filePath in Directory.GetFileSystemEntries(path, patern, searchOption))
+                {
+                    FileAttributes attr = File.GetAttributes(filePath);
+
+                    if (!attr.HasFlag(FileAttributes.Directory))
+                    {
+                        fileIteration(filePath);
+                    }
+                }
+        }
+
+        static void AddOverrideFiles()
+        {
+            string overridePath = $@"{autogenFolderPath}\override";
+            if (Directory.Exists(overridePath))
+            {
+                string[] headerTypes = { "*.h", "*.hpp" };
+
+                IterateFiles(overridePath, headerTypes, (string path) =>
+                {
+                    autogenHeaders += $"#include \"{GetRelativePath(overridePath, path)}\"\n";
+                    Logger.Log($"Including override header: {path}", LogLevel.debug);
+                });
+
+                string[] implTypes = { "*.inl" };
+
+                IterateFiles(overridePath, implTypes, (string path) =>
+                {
+                    autogenImpl += $"#include \"{GetRelativePath(overridePath, path)}\"\n";
+                    Logger.Log($"Including override implementation: {path}", LogLevel.debug);
+                });
+            }
         }
 
         static void GenerateCode(CppContainerList<CppClass> classes, string nameSpace = "")
         {
+            Logger.Log("Enter GenerateCode", LogLevel.trace);
             foreach (var cppStruct in classes)
             {
                 if (cppStruct.SourceFile == null)
                     continue;
 
                 if (!cppStruct.SourceFile.Contains(CLArgs.moduleName))
+                    continue;
+
+                bool matched = false;
+                foreach (Regex regex in CLArgs.excludePatterns)
+                    if (regex.IsMatch(cppStruct.SourceFile))
+                    {
+                        matched = true;
+                        break;
+                    }
+
+                if (matched)
                     continue;
 
                 string depPath = " ";
@@ -59,32 +137,55 @@ namespace RytheTributary
                 source = removeComments.Replace(source, "");
                 source = removeGroupComments.Replace(source, "");
 
+                Regex findStruct = new Regex($@"\b(?:struct|class)\b\s*.*\s*{cppStruct.Name}\s*(?:\s*\:[\s|<|>|\w|\:]*)?\s*\{{");
+                if (!findStruct.IsMatch(source))
+                    continue;
+
+                Regex isClassRegex = new Regex($@"\b(?:class)\b\s*.*\s*{cppStruct.Name}\s*(?:\s*\:[\s|<|>|\w|\:]*)?\s*\{{");
+
+                bool reflectable = false;
+                bool no_reflect = isClassRegex.IsMatch(source);
                 foreach (CppAttribute attr in cppStruct.Attributes)
                 {
-                    string scopeStr = attr.Scope != null ? attr.Scope + "::" : "";
-                    Regex findStruct = new Regex($@"\b(?:struct|class)\b\s*\[\[{scopeStr}{attr.Name}\]\]\s*{cppStruct.Name}[\s|<|>|\w|:| |\n]*\{{");
-                    if (!findStruct.IsMatch(source))
-                        continue;
-
                     if (attr.Name.Equals("reflectable"))
                     {
-                        if (!autogenHeaders.ContainsKey(CLArgs.moduleName))
-                            autogenHeaders.Add(CLArgs.moduleName, "#pragma once\n#include <core/platform/platform.hpp>\n#if __has_include_next(\"autogen.hpp\")\n#include_next \"autogen.hpp\"\n#endif\n");
-                        if (!autogenInline.ContainsKey(CLArgs.moduleName))
-                            autogenInline.Add(CLArgs.moduleName, "#include \"autogen.hpp\"\n#pragma once\n");
-
-                        WriteToHpp(cppStruct.Name, CodeGenerator.PrototypeHPP(cppStruct.Name, nameSpace), "prototype");
-                        WriteToHpp(cppStruct.Name, CodeGenerator.ReflectorHPP(cppStruct.Name, nameSpace), "reflector");
-
-                        WriteToInl(cppStruct.Name, CodeGenerator.PrototypeInl(cppStruct.Name, nameSpace, depPath, cppStruct.Fields, cppStruct.Attributes), "prototype");
-                        WriteToInl(cppStruct.Name, CodeGenerator.ReflectorInl(cppStruct.Name, nameSpace, depPath, cppStruct.Fields, cppStruct.Attributes), "reflector");
-                        Logger.Log($"Generated files for {cppStruct.Name}", LogLevel.debug);
+                        reflectable = true;
+                        no_reflect = false;
+                        break;
+                    }
+                    else if (attr.Name.Equals("no_reflect"))
+                    {
+                        no_reflect = true;
+                        break;
                     }
                 }
+
+                if (no_reflect)
+                    continue;
+
+                WriteToHpp(cppStruct.Name, CodeGenerator.PrototypeHeader(cppStruct.Name, nameSpace), "prototype");
+                WriteToHpp(cppStruct.Name, CodeGenerator.ReflectorHeader(cppStruct.Name, nameSpace), "reflector");
+
+                if (reflectable)
+                {
+                    WriteToInl(cppStruct.Name, CodeGenerator.PrototypeImpl(cppStruct, nameSpace, depPath), "prototype");
+                    WriteToInl(cppStruct.Name, CodeGenerator.ReflectorImpl(cppStruct, nameSpace, depPath), "reflector");
+                }
+                else
+                {
+                    WriteToInl(cppStruct.Name, CodeGenerator.DummyPrototypeImpl(cppStruct, nameSpace, depPath), "prototype");
+                    WriteToInl(cppStruct.Name, CodeGenerator.DummyReflectorImpl(cppStruct, nameSpace, depPath), "reflector");
+                }
+
+                Logger.Log($"Generated files for {cppStruct.Name}", LogLevel.debug);
             }
+            Logger.Log("Exit GenerateCode", LogLevel.trace);
         }
+
         static void SearchNamespaces(CppContainerList<CppNamespace> Namespaces, string parentNameSpace = "")
         {
+            Logger.Log("Enter SearchNamespaces", LogLevel.trace);
+
             string combinedNameSpace = "";
             foreach (var nameSpace in Namespaces)
             {
@@ -105,20 +206,25 @@ namespace RytheTributary
                     GenerateCode(nameSpace.Classes, combinedNameSpace);
                 }
             }
+            Logger.Log("Exit SearchNamespaces", LogLevel.trace);
         }
         static void WriteToHpp(string structName, string contents, string type)
         {
-            string writePath = $@"{CLArgs.moduleRoot}\{CLArgs.moduleName}\autogen\autogen_{type}_{structName}.hpp";
-            autogenHeaders[CLArgs.moduleName] += $"#include \"{writePath}\"\n".Replace($@"{CLArgs.moduleRoot}\{CLArgs.moduleName}\autogen\", "");
+            Logger.Log("Enter WriteToHpp", LogLevel.trace);
+            string writePath = $@"{autogenFolderPath}\autogen_{type}_{structName}.hpp";
+            autogenHeaders += $"#include \"{writePath}\"\n".Replace($@"{CLArgs.moduleRoot}\{CLArgs.moduleName}\autogen\", "");
             filesCreated++;
             File.WriteAllText(writePath, contents);
+            Logger.Log("Exit WriteToHpp", LogLevel.trace);
         }
         static void WriteToInl(string structName, string contents, string type)
         {
-            string writePath = $@"{CLArgs.moduleRoot}\{CLArgs.moduleName}\autogen\autogen_{type}_{structName}.inl";
-            autogenInline[CLArgs.moduleName] += $"#include \"autogen_{type}_{structName}.inl\"\n";
+            Logger.Log("Enter WriteToInl", LogLevel.trace);
+            string writePath = $@"{autogenFolderPath}\autogen_{type}_{structName}.inl";
+            autogenImpl += $"#include \"autogen_{type}_{structName}.inl\"\n";
             filesCreated++;
             File.WriteAllText(writePath, contents);
+            Logger.Log("Exit WriteToInl", LogLevel.trace);
         }
     }
 }

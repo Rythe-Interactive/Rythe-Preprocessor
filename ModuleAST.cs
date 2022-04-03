@@ -44,6 +44,8 @@ namespace RytheTributary
 
         public static bool GenerateAST()
         {
+            Logger.Log("Enter GenerateAST", LogLevel.trace);
+
             string[] fileTypes = { "*.h", "*.hpp" };
             var fileDirs = new List<string>();
 
@@ -78,29 +80,28 @@ namespace RytheTributary
             watch.Start();
             result = CppParser.ParseFiles(fileDirs, CLArgs.options);
             watch.Stop();
+            Logger.Log($"AST Generation completed in {watch.Elapsed.TotalSeconds.ToString("F6", CultureInfo.InvariantCulture)} seconds", LogLevel.info);
 
             foreach (var diagnostic in result.Diagnostics.Messages)
             {
                 if (diagnostic.Type == CppLogMessageType.Warning)
-                    Logger.LogHidden("W:" + diagnostic.ToString(), LogLevel.warn);
-                if (diagnostic.Type == CppLogMessageType.Info)
-                    Logger.LogHidden("I:" + diagnostic.ToString(), LogLevel.info);
-                if (diagnostic.Type == CppLogMessageType.Error)
-                {
-                    Logger.PrintLn(diagnostic);
-                    Logger.LogHidden("E:" + diagnostic.ToString(), LogLevel.error);
-                }
+                    Logger.LogHidden(diagnostic, LogLevel.warn);
+                else if (diagnostic.Type == CppLogMessageType.Info)
+                    Logger.LogHidden(diagnostic, LogLevel.info);
+                else if (diagnostic.Type == CppLogMessageType.Error)
+                    Logger.Log(diagnostic, LogLevel.error);
             }
 
             if (!result.HasErrors)
             {
-                Logger.Log($"AST Generation completed in {watch.Elapsed.TotalSeconds.ToString("F6", CultureInfo.InvariantCulture)} seconds", LogLevel.info);
                 Logger.Log($"Classes Found: {CountClasses()}", LogLevel.info);
+                Logger.Log("Exit GenerateAST", LogLevel.trace);
                 return true;
             }
             else
             {
                 Logger.Log("AST Generation had errors and did not complete", LogLevel.fatal);
+                Logger.Log("Exit GenerateAST", LogLevel.trace);
                 return false;
             }
         }

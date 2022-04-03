@@ -55,7 +55,6 @@ namespace RytheTributary
             Regex moduleRegex = new Regex("-module=(.*)");
             Regex starReplace = new Regex("([^\\.*]*)\\*([^\\*]*)");
 
-
             options = options.ConfigureForWindowsMsvc(CppTargetCpu.X86_64, CppVisualStudioVersion.VS2019);
             options.AdditionalArguments.Add("-std=c++17");
             options.Defines.Add("L_AUTOGENACTIVE");

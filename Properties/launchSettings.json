@@ -1,8 +1,20 @@
 {
   "profiles": {
-    "RytheTributary": {
+    "Preprocess core": {
       "commandName": "Project",
       "commandLineArgs": "-v=0 -moduleroot=..\\..\\legion\\engine\\ -include=..\\..\\deps\\include -module=\"core\" -ex=deps -ex=glm -ex=autogen",
+      "workingDirectory": "$(SolutionDir)..\\legion-engine\\tools\\Rythe-Preprocessor\\",
+      "nativeDebugging": true
+    },
+    "Preprocess sandbox": {
+      "commandName": "Project",
+      "commandLineArgs": "-v=0 -moduleroot=..\\..\\applications\\ -include=..\\..\\deps\\include  -include=..\\..\\legion\\engine -module=\"sandbox\" -ex=deps -ex=glm -ex=autogen",
+      "workingDirectory": "$(SolutionDir)..\\legion-engine\\tools\\Rythe-Preprocessor\\",
+      "nativeDebugging": true
+    },
+    "Preprocess rendering": {
+      "commandName": "Project",
+      "commandLineArgs": "-v=0 -moduleroot=..\\..\\legion\\engine\\ -include=..\\..\\deps\\include -module=\"rendering\" -ex=deps -ex=glm -ex=autogen",
       "workingDirectory": "$(SolutionDir)..\\legion-engine\\tools\\Rythe-Preprocessor\\",
       "nativeDebugging": true
     }
