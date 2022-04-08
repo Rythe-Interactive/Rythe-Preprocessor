@@ -115,6 +115,9 @@ namespace RytheTributary
                 if (!cppStruct.SourceFile.Contains(CLArgs.moduleName))
                     continue;
 
+                if (cppStruct.TemplateParameters.Count > 0)
+                    continue;
+
                 bool matched = false;
                 foreach (Regex regex in CLArgs.excludePatterns)
                     if (regex.IsMatch(cppStruct.SourceFile))
@@ -141,10 +144,8 @@ namespace RytheTributary
                 if (!findStruct.IsMatch(source))
                     continue;
 
-                Regex isClassRegex = new Regex($@"\b(?:class)\b\s*.*\s*{cppStruct.Name}\s*(?:\s*\:[\s|<|>|\w|\:]*)?\s*\{{");
-
                 bool reflectable = false;
-                bool no_reflect = isClassRegex.IsMatch(source);
+                bool no_reflect = false;
                 foreach (CppAttribute attr in cppStruct.Attributes)
                 {
                     if (attr.Name.Equals("reflectable"))
@@ -161,6 +162,9 @@ namespace RytheTributary
                 }
 
                 if (no_reflect)
+                    continue;
+
+                if (!reflectable && (cppStruct.ClassKind == CppClassKind.Class))
                     continue;
 
                 WriteToHpp(cppStruct.Name, CodeGenerator.PrototypeHeader(cppStruct.Name, nameSpace), "prototype");

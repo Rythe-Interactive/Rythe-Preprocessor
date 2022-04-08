@@ -171,12 +171,18 @@ namespace RytheTributary
 
                 switch (actualType)
                 {
+                    case CppTypeKind.StructOrClass:
+                        if ((field.Type is CppClass) && ((field.Type as CppClass).TemplateParameters.Count > 0))
+                            continue;
+
+                        if (walkNamespaceTree(field.Type.Parent as CppNamespace).Contains("std::"))
+                            goto case CppTypeKind.Primitive;
+
+                        cw.WriteLine($"refl.members.emplace(\"{field.Name}\", member_reference(\"{field.Name}\", make_reflector(obj.{field.Name})));");
+                        break;
                     case CppTypeKind.Primitive:
                     case CppTypeKind.Enum:
                         cw.WriteLine($"refl.members.emplace(\"{field.Name}\", member_reference(\"{field.Name}\", primitive_reference{{typeHash(obj.{field.Name}), &obj.{field.Name}}}));");
-                        break;
-                    case CppTypeKind.StructOrClass:
-                        cw.WriteLine($"refl.members.emplace(\"{field.Name}\", member_reference(\"{field.Name}\", make_reflector(obj.{field.Name})));");
                         break;
                 }
             }
@@ -286,12 +292,18 @@ namespace RytheTributary
 
                 switch (actualType)
                 {
+                    case CppTypeKind.StructOrClass:
+                        if ((field.Type is CppClass) && ((field.Type as CppClass).TemplateParameters.Count > 0))
+                            continue;
+
+                        if (walkNamespaceTree(field.Type.Parent as CppNamespace).Contains("std::"))
+                            goto case CppTypeKind.Primitive;
+
+                        cw.WriteLine($"prot.members.emplace(\"{field.Name}\", member_value(\"{field.Name}\", make_prototype(obj.{field.Name})));");
+                        break;
                     case CppTypeKind.Primitive:
                     case CppTypeKind.Enum:
                         cw.WriteLine($"prot.members.emplace(\"{field.Name}\", member_value(\"{field.Name}\", primitive_value{{typeHash(obj.{field.Name}), std::any(obj.{field.Name})}}));");
-                        break;
-                    case CppTypeKind.StructOrClass:
-                        cw.WriteLine($"prot.members.emplace(\"{field.Name}\", member_value(\"{field.Name}\", make_prototype(obj.{field.Name})));");
                         break;
                 }
             }
@@ -341,7 +353,7 @@ namespace RytheTributary
             cw.WriteLine("prototype prot;");
             cw.WriteLine($"prot.typeId = typeHash<{nameSpace}::{type.Name}>();");
 
-            string nameSpaceName = nameSpace.Length > 0? nameSpace + "::" : "";
+            string nameSpaceName = nameSpace.Length > 0 ? nameSpace + "::" : "";
             cw.WriteLine($"prot.typeName = \"{nameSpaceName}{type.Name}\";");
 
             if (type.Attributes != null && !dummy)
