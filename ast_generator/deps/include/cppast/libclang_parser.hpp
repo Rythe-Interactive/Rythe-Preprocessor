@@ -84,7 +84,7 @@ private:
 };
 
 /// Compilation config for the [cppast::libclang_parser]().
-class libclang_compile_config final : public compile_config
+class libclang_compile_config : public compile_config
 {
 public:
     /// Creates the default configuration.

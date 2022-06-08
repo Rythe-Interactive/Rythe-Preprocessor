@@ -77,7 +77,8 @@ int main(int argc, char** argv)
 
 	Parser parser(pSettings);
 
-	parser.parse();
+	if (!parser.parse())
+		return -1;
 
 	for (auto& file : parser.files())
 	{

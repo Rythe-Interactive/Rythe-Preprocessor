@@ -11,6 +11,8 @@
 #include <spdlog/sinks/rotating_file_sink.h>
 #include <spdlog/pattern_formatter.h>
 
+#include <cppast/diagnostic_logger.hpp>
+
 namespace ast::log
 {
     using logger_ptr = std::shared_ptr<spdlog::logger>;
@@ -137,6 +139,12 @@ namespace ast::log
         impl::threadNames[std::this_thread::get_id()] = std::string(name);
     }
 
+    inline std::string get_thread_name()
+    {
+        std::lock_guard<std::shared_mutex> wguard(impl::threadNamesLock);
+        return impl::threadNames[std::this_thread::get_id()];
+    }
+
     /** @brief same as println but with severity = trace */
     template<class... Args, class FormatString>
     void trace(const FormatString& format, Args&&... a)
@@ -178,4 +186,13 @@ namespace ast::log
     {
         println(severity::fatal, format, std::forward<Args>(a)...);
     }
+
+    class cppast_diagnostic_logger final : public cppast::diagnostic_logger
+    {
+    public:
+        using cppast::diagnostic_logger::diagnostic_logger;
+
+    private:
+        bool do_log(const char* source, const cppast::diagnostic& d) const override;
+    };
 }
