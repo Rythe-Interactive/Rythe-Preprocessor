@@ -6,21 +6,44 @@ MinimumVisualStudioVersion = 10.0.40219.1
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "RytheTributary", "RytheTributary.csproj", "{F9D8AF17-88C7-4AEB-A605-15A285D8C73A}"
 EndProject
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "ast_generator", "ast_generator\ast_generator.vcxproj", "{7EE943BC-D78B-4DA1-8202-1830708A8130}"
+	ProjectSection(ProjectDependencies) = postProject
+		{9566EA63-A515-3FC9-8463-37C72F3111F0} = {9566EA63-A515-3FC9-8463-37C72F3111F0}
+	EndProjectSection
+EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "cppast", "..\cppast\src\cppast.vcxproj", "{9566EA63-A515-3FC9-8463-37C72F3111F0}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|x64 = Debug|x64
+		MinSizeRel|x64 = MinSizeRel|x64
 		Release|x64 = Release|x64
+		RelWithDebInfo|x64 = RelWithDebInfo|x64
 	EndGlobalSection
 	GlobalSection(ProjectConfigurationPlatforms) = postSolution
 		{F9D8AF17-88C7-4AEB-A605-15A285D8C73A}.Debug|x64.ActiveCfg = Debug|Any CPU
 		{F9D8AF17-88C7-4AEB-A605-15A285D8C73A}.Debug|x64.Build.0 = Debug|Any CPU
+		{F9D8AF17-88C7-4AEB-A605-15A285D8C73A}.MinSizeRel|x64.ActiveCfg = Release|Any CPU
+		{F9D8AF17-88C7-4AEB-A605-15A285D8C73A}.MinSizeRel|x64.Build.0 = Release|Any CPU
 		{F9D8AF17-88C7-4AEB-A605-15A285D8C73A}.Release|x64.ActiveCfg = Release|Any CPU
 		{F9D8AF17-88C7-4AEB-A605-15A285D8C73A}.Release|x64.Build.0 = Release|Any CPU
+		{F9D8AF17-88C7-4AEB-A605-15A285D8C73A}.RelWithDebInfo|x64.ActiveCfg = Release|Any CPU
+		{F9D8AF17-88C7-4AEB-A605-15A285D8C73A}.RelWithDebInfo|x64.Build.0 = Release|Any CPU
 		{7EE943BC-D78B-4DA1-8202-1830708A8130}.Debug|x64.ActiveCfg = Debug|x64
 		{7EE943BC-D78B-4DA1-8202-1830708A8130}.Debug|x64.Build.0 = Debug|x64
+		{7EE943BC-D78B-4DA1-8202-1830708A8130}.MinSizeRel|x64.ActiveCfg = Release|x64
+		{7EE943BC-D78B-4DA1-8202-1830708A8130}.MinSizeRel|x64.Build.0 = Release|x64
 		{7EE943BC-D78B-4DA1-8202-1830708A8130}.Release|x64.ActiveCfg = Release|x64
 		{7EE943BC-D78B-4DA1-8202-1830708A8130}.Release|x64.Build.0 = Release|x64
+		{7EE943BC-D78B-4DA1-8202-1830708A8130}.RelWithDebInfo|x64.ActiveCfg = Release|x64
+		{7EE943BC-D78B-4DA1-8202-1830708A8130}.RelWithDebInfo|x64.Build.0 = Release|x64
+		{9566EA63-A515-3FC9-8463-37C72F3111F0}.Debug|x64.ActiveCfg = Debug|x64
+		{9566EA63-A515-3FC9-8463-37C72F3111F0}.Debug|x64.Build.0 = Debug|x64
+		{9566EA63-A515-3FC9-8463-37C72F3111F0}.MinSizeRel|x64.ActiveCfg = MinSizeRel|x64
+		{9566EA63-A515-3FC9-8463-37C72F3111F0}.MinSizeRel|x64.Build.0 = MinSizeRel|x64
+		{9566EA63-A515-3FC9-8463-37C72F3111F0}.Release|x64.ActiveCfg = Release|x64
+		{9566EA63-A515-3FC9-8463-37C72F3111F0}.Release|x64.Build.0 = Release|x64
+		{9566EA63-A515-3FC9-8463-37C72F3111F0}.RelWithDebInfo|x64.ActiveCfg = RelWithDebInfo|x64
+		{9566EA63-A515-3FC9-8463-37C72F3111F0}.RelWithDebInfo|x64.Build.0 = RelWithDebInfo|x64
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

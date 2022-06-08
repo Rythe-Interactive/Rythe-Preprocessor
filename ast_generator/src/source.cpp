@@ -5,6 +5,7 @@
 #include "utils.hpp"
 
 #include <cppast/visitor.hpp>
+#include <cppast/cpp_template.hpp>
 
 int main(int argc, char** argv)
 {
@@ -72,13 +73,72 @@ int main(int argc, char** argv)
 	parser_settings pSettings;
 
 	pSettings.buildDirectory = sanitise_path(args({ "-d", "-dir" }).str());
-	
+	pSettings.verbose = static_cast<int>(log::current_filter()) <= static_cast<int>(log::severity_debug);
+
 	log::debug("Build dir: {}", pSettings.buildDirectory);
 
 	Parser parser(pSettings);
 
 	if (!parser.parse())
 		return -1;
+
+	auto getTypeName = [](const cppast::cpp_non_type_template_parameter* param)
+	{
+		if (!param)
+			return std::string();
+
+		auto& type = param->type();
+		auto kind = type.kind();
+
+		switch (kind)
+		{
+		case cppast::cpp_type_kind::builtin_t:
+		{
+			auto* ptr = dynamic_cast<const cppast::cpp_builtin_type*>(&type);
+			if (!ptr)
+				return std::string();
+
+			return std::string(cppast::to_string(ptr->builtin_type_kind()));
+		}
+		case cppast::cpp_type_kind::user_defined_t:
+		{
+			auto* ptr = dynamic_cast<const cppast::cpp_user_defined_type*>(&type);
+			if (!ptr)
+				return std::string();
+
+			return ptr->entity().name();
+		}
+		case cppast::cpp_type_kind::auto_t:
+			return std::string("auto");
+		case cppast::cpp_type_kind::decltype_t:
+			return std::string("decltype");
+		case cppast::cpp_type_kind::decltype_auto_t:
+			return std::string("decltype_auto");
+		case cppast::cpp_type_kind::cv_qualified_t:
+			return std::string("cv_qualified");
+		case cppast::cpp_type_kind::pointer_t:
+			return std::string("pointer");
+		case cppast::cpp_type_kind::reference_t:
+			return std::string("reference");
+		case cppast::cpp_type_kind::array_t:
+			return std::string("array");
+		case cppast::cpp_type_kind::function_t:
+			return std::string("function");
+		case cppast::cpp_type_kind::member_function_t:
+			return std::string("member_function");
+		case cppast::cpp_type_kind::member_object_t:
+			return std::string("member_object");
+		case cppast::cpp_type_kind::template_parameter_t:
+			return std::string("template_parameter");
+		case cppast::cpp_type_kind::template_instantiation_t:
+			return std::string("template_instantiation");
+		case cppast::cpp_type_kind::dependent_t:
+			return std::string("dependent");
+		case cppast::cpp_type_kind::unexposed_t:
+			return std::string("unexposed");
+		}
+		return std::string("UNKNOWN");
+	};
 
 	for (auto& file : parser.files())
 	{
@@ -91,7 +151,46 @@ int main(int argc, char** argv)
 				else if (info.event == cppast::visitor_info::container_entity_enter)
 					// entering a new container
 				{
-					log::info("{}'{}' - {}", prefix, e.name(), cppast::to_string(e.kind()));
+					auto kind = e.kind();
+
+					switch (kind)
+					{
+					case cppast::cpp_entity_kind::alias_template_t:
+					case cppast::cpp_entity_kind::variable_template_t:
+					case cppast::cpp_entity_kind::function_template_t:
+					case cppast::cpp_entity_kind::function_template_specialization_t:
+					case cppast::cpp_entity_kind::class_template_t:
+					case cppast::cpp_entity_kind::class_template_specialization_t:
+					{
+						auto* templateEnt = dynamic_cast<const cppast::cpp_template*>(&e);
+						if (templateEnt)
+						{
+							std::string paramters;
+							for (auto& param : templateEnt->parameters())
+							{
+								auto paramKind = param.kind();
+
+								if (paramKind == cppast::cpp_entity_kind::template_type_parameter_t)
+									paramters += "typename";
+								else if (paramKind == cppast::cpp_entity_kind::template_template_parameter_t)
+									paramters += "template";
+								else if (paramKind == cppast::cpp_entity_kind::non_type_template_parameter_t)
+									paramters += getTypeName(dynamic_cast<const cppast::cpp_non_type_template_parameter*>(&param));
+
+								if (param.is_variadic())
+									paramters += "...";
+
+								paramters += " " + param.name() + ", ";
+							}
+
+							log::info("{}'{}' - {}: template<{}>", prefix, e.name(), cppast::to_string(kind), paramters.substr(0, paramters.size() - 2));
+							break;
+						}
+					}
+					default:
+						log::info("{}'{}' - {}", prefix, e.name(), cppast::to_string(kind));
+					}
+
 					prefix += "\t";
 				}
 				else // if (info.event == cppast::visitor_info::leaf_entity) // a non-container entity

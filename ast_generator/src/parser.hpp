@@ -9,6 +9,7 @@ namespace ast
 	struct parser_settings
 	{
 		std::string buildDirectory;
+		bool verbose;
 	};
 
 	class Parser
