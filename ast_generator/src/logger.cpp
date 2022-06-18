@@ -108,7 +108,7 @@ namespace ast::log
 		switch (d.severity)
 		{
 		case cppast::severity::debug:
-			s = severity_debug;
+			s = severity_trace;
 			break;
 		case cppast::severity::info:
 			s = severity_info;
@@ -129,7 +129,7 @@ namespace ast::log
 
 		if (loc.empty())
 			println(s, "[{}] {}", source, d.message);
-		else
+		else if (std::strcmp(source, "libclang") != 0)
 			println(s, "[{}] {}{}", source, loc, d.message);
 
 		return true;

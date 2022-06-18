@@ -97,6 +97,7 @@
     <ClCompile Include="src\source.cpp" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="src\codegenerator.hpp" />
     <ClInclude Include="src\logger.hpp" />
     <ClInclude Include="src\parser.hpp" />
     <ClInclude Include="src\utils.hpp" />

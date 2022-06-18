@@ -73,7 +73,7 @@ int main(int argc, char** argv)
 	parser_settings pSettings;
 
 	pSettings.buildDirectory = sanitise_path(args({ "-d", "-dir" }).str());
-	pSettings.verbose = static_cast<int>(log::current_filter()) <= static_cast<int>(log::severity_debug);
+	pSettings.verbose = static_cast<int>(log::current_filter()) <= static_cast<int>(log::severity_trace);
 
 	log::debug("Build dir: {}", pSettings.buildDirectory);
 
